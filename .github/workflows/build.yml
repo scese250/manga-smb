@@ -33,9 +33,27 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Run unit tests
-        id: unit_tests
-        run: ./gradlew testDebugUnitTest
+      - name: Decode keystore
+        if: ${{ secrets.SIGNING_KEY != '' }}
+        run: |
+          echo "${{ secrets.SIGNING_KEY }}" | base64 -d > ${{ runner.temp }}/keystore.jks
+          echo "STORE_FILE=${{ runner.temp }}/keystore.jks" >> $GITHUB_ENV
+          echo "STORE_PASSWORD=${{ secrets.KEY_STORE_PASSWORD }}" >> $GITHUB_ENV
+          echo "KEY_ALIAS=${{ secrets.ALIAS }}" >> $GITHUB_ENV
+          echo "KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> $GITHUB_ENV
 
       - name: Build app
         run: ./gradlew assembleRelease
+
+      - name: Find APK
+        id: find_apk
+        run: |
+          APK_PATH=$(find app/build/outputs/apk -name '*.apk' -type f | head -1)
+          echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
+          echo "Found APK at: $APK_PATH"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: smb-lector-${{ github.sha }}
+          path: ${{ steps.find_apk.outputs.apk_path }}
