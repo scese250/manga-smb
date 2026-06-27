@@ -1,7 +1,7 @@
 package eu.kanade.tachiyomi.data.smb
 
 import android.content.Context
-import eu.kanade.tachiyomi.util.system.logcat
+import tachiyomi.core.common.util.system.logcat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import logcat.LogPriority
@@ -47,8 +47,7 @@ class SmbSyncManager(
                         id = 0, // DB will auto-generate if 0 or -1? In Mihon it's 0 usually
                         name = folderName,
                         order = maxOrder + 1,
-                        flags = 0,
-                        hidden = false
+                        flags = 0
                     )
                     categoryRepository.insert(newCategory)
                     // Refresh categories to get the newly inserted one with its ID

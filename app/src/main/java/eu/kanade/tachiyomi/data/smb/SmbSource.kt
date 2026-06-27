@@ -8,6 +8,7 @@ import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
+import eu.kanade.tachiyomi.source.model.SMangaUpdate
 
 class SmbSource(
     private val context: Context,
@@ -32,19 +33,25 @@ class SmbSource(
 
     override suspend fun getLatestUpdates(page: Int): MangasPage = MangasPage(emptyList(), false)
 
-    @Suppress("DEPRECATION")
-    override suspend fun getMangaDetails(manga: SManga): SManga = manga
-
-    @Suppress("DEPRECATION")
-    override suspend fun getChapterList(manga: SManga): List<SChapter> {
-        return listOf(
-            SChapter.create().apply {
-                url = manga.url
-                name = manga.title
-                chapter_number = 1.0f
-                date_upload = System.currentTimeMillis()
-            }
-        )
+    override suspend fun getMangaUpdate(
+        manga: SManga,
+        chapters: List<SChapter>,
+        fetchDetails: Boolean,
+        fetchChapters: Boolean,
+    ): SMangaUpdate {
+        val newChapters = if (fetchChapters) {
+            listOf(
+                SChapter.create().apply {
+                    url = manga.url
+                    name = manga.title
+                    chapter_number = 1.0f
+                    date_upload = System.currentTimeMillis()
+                }
+            )
+        } else {
+            chapters
+        }
+        return SMangaUpdate(manga, newChapters)
     }
 
     @Suppress("DEPRECATION")
