@@ -1,6 +1,6 @@
 package eu.kanade.tachiyomi.data.smb
 
-import android.content.Context
+import android.app.Application
 import tachiyomi.core.common.util.system.logcat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -17,7 +17,7 @@ import uy.kohesive.injekt.api.get
 import java.io.File
 
 class SmbSyncManager(
-    private val context: Context = Injekt.get(),
+    private val application: Application = Injekt.get(),
     private val smbPreferences: SmbPreferences = Injekt.get(),
     private val smbClient: SmbClientWrapper = Injekt.get(),
     private val mangaRepository: MangaRepository = Injekt.get(),
@@ -30,7 +30,7 @@ class SmbSyncManager(
             val enabledFolders = smbPreferences.enabledFolders.get()
             if (enabledFolders.isEmpty()) return@withContext
 
-            val coversDir = File(context.filesDir, "smb_covers")
+            val coversDir = File(application.filesDir, "smb_covers")
             if (!coversDir.exists()) coversDir.mkdirs()
 
             // Get existing categories to avoid duplicates
