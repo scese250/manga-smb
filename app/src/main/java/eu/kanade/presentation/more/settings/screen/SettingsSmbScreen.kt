@@ -153,6 +153,29 @@ object SettingsSmbScreen : SearchableSettings {
                                     strokeWidth = 2.dp,
                                 )
                             }
+                            
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                            
+                            var isSyncing by remember { mutableStateOf(false) }
+                            Button(
+                                onClick = {
+                                    scope.launch {
+                                        isSyncing = true
+                                        eu.kanade.tachiyomi.data.smb.SmbSyncManager().syncLibrary()
+                                        isSyncing = false
+                                    }
+                                },
+                                enabled = !isSyncing && enabledFolders.isNotEmpty(),
+                            ) {
+                                Text(if (isSyncing) "Sincronizando..." else "Sincronizar Biblioteca SMB")
+                            }
+                            if (isSyncing) {
+                                Text(
+                                    text = "Esto puede tardar un momento. Los mangas aparecerán en la pestaña Biblioteca.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                            }
                         }
                     },
                 ),

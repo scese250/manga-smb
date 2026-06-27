@@ -36,7 +36,16 @@ class SmbSource(
     override suspend fun getMangaDetails(manga: SManga): SManga = manga
 
     @Suppress("DEPRECATION")
-    override suspend fun getChapterList(manga: SManga): List<SChapter> = emptyList()
+    override suspend fun getChapterList(manga: SManga): List<SChapter> {
+        return listOf(
+            SChapter.create().apply {
+                url = manga.url
+                name = manga.title
+                chapter_number = 1.0f
+                date_upload = System.currentTimeMillis()
+            }
+        )
+    }
 
     @Suppress("DEPRECATION")
     override suspend fun getPageList(chapter: SChapter): List<Page> = throw UnsupportedOperationException("Unused")
