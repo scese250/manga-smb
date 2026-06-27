@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ChromeReaderMode
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.CollectionsBookmark
+import androidx.compose.material.icons.outlined.Dns
 import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.outlined.GetApp
 import androidx.compose.material.icons.outlined.Info
@@ -232,6 +233,12 @@ object SettingsMainScreen : Screen() {
             },
             icon = Icons.Outlined.Info,
             screen = AboutScreen,
+        ),
+        Item(
+            titleRes = MR.strings.label_settings,
+            formatSubtitle = { "SMB" },
+            icon = Icons.Outlined.Dns,
+            screen = SettingsSmbScreen,
         ),
     )
 }
