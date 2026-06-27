@@ -74,9 +74,7 @@ class SmbClientWrapper(
     suspend fun testConnection(): Result<String> = withContext(Dispatchers.IO) {
         try {
             val diskShare = ensureConnected()
-            val basePath = preferences.smbBasePath.get()
-            val path = basePath.ifBlank { "" }
-            val entries = diskShare.list(path)
+            val entries = diskShare.list("")
             val folderCount = entries.count {
                 (it.fileAttributes and FileAttributes.FILE_ATTRIBUTE_DIRECTORY.value) != 0L &&
                     it.fileName != "." && it.fileName != ".."

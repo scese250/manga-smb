@@ -58,7 +58,6 @@ class SmbLibraryScreenModel(
             mutableState.update { it.copy(isRefreshing = true) }
 
             try {
-                val basePath = smbPreferences.smbBasePath.get()
                 val enabledFolders = smbPreferences.enabledFolders.get()
 
                 if (enabledFolders.isEmpty()) {
@@ -76,10 +75,9 @@ class SmbLibraryScreenModel(
                 val newCategories = mutableMapOf<String, List<SmbMangaItem>>()
 
                 for (folder in enabledFolders) {
-                    val folderPath = if (basePath.isBlank()) folder else "$basePath\\$folder"
-                    val mangaFolders = smbClient.listFolders(folderPath)
+                    val mangaFolders = smbClient.listFolders(folder)
                     val mangaItems = mangaFolders.map { mangaName ->
-                        val mangaPath = "$folderPath\\$mangaName"
+                        val mangaPath = "$folder\\$mangaName"
                         SmbMangaItem(
                             name = mangaName,
                             smbPath = mangaPath,

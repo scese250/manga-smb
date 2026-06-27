@@ -15,8 +15,6 @@ class SmbPreferences(
 
     val smbShareName: Preference<String> = preferenceStore.getString("smb_share_name", "")
 
-    val smbBasePath: Preference<String> = preferenceStore.getString("smb_base_path", "")
-
     val enabledFolders: Preference<Set<String>> = preferenceStore.getStringSet("smb_enabled_folders", emptySet())
 
     fun isConfigured(): Boolean {

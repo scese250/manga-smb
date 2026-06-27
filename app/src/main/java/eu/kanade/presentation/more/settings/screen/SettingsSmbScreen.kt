@@ -75,11 +75,6 @@ object SettingsSmbScreen : SearchableSettings {
                         title = "Nombre del recurso compartido",
                         subtitle = smbPreferences.smbShareName.get().ifBlank { "El nombre del share en Windows, ej: Exhentai" },
                     ),
-                    Preference.PreferenceItem.EditTextPreference(
-                        preference = smbPreferences.smbBasePath,
-                        title = "Subcarpeta dentro del share (opcional)",
-                        subtitle = smbPreferences.smbBasePath.get().ifBlank { "Solo si las carpetas de categorias NO estan en la raiz del share. Dejar vacio si el share ya apunta a la carpeta correcta." },
-                    ),
                 ),
             ),
             Preference.PreferenceGroup(
@@ -143,8 +138,7 @@ object SettingsSmbScreen : SearchableSettings {
                                     scope.launch {
                                         isFetchingFolders = true
                                         val client = SmbClientWrapper(smbPreferences)
-                                        val basePath = smbPreferences.smbBasePath.get()
-                                        availableFolders = client.listFolders(basePath)
+                                        availableFolders = client.listFolders("")
                                         client.disconnect()
                                         isFetchingFolders = false
                                     }
