@@ -12,6 +12,8 @@ build
 # Configuration files
 keystore.properties
 local.properties
+*.jks
+keystore_base64.txt
 
 # macOS specific files
 .DS_Store

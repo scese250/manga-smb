@@ -78,7 +78,7 @@ class SmbClientWrapper(
             val path = basePath.ifBlank { "" }
             val entries = diskShare.list(path)
             val folderCount = entries.count {
-                it.fileAttributes.contains(FileAttributes.FILE_ATTRIBUTE_DIRECTORY) &&
+                (it.fileAttributes and FileAttributes.FILE_ATTRIBUTE_DIRECTORY.value) != 0L &&
                     it.fileName != "." && it.fileName != ".."
             }
             Result.success("Conexion exitosa. $folderCount carpetas encontradas.")
@@ -94,7 +94,7 @@ class SmbClientWrapper(
             val entries = diskShare.list(path)
             entries
                 .filter {
-                    it.fileAttributes.contains(FileAttributes.FILE_ATTRIBUTE_DIRECTORY) &&
+                    (it.fileAttributes and FileAttributes.FILE_ATTRIBUTE_DIRECTORY.value) != 0L &&
                         it.fileName != "." && it.fileName != ".."
                 }
                 .map { it.fileName }
@@ -111,7 +111,7 @@ class SmbClientWrapper(
             val entries = diskShare.list(path)
             entries
                 .filter {
-                    !it.fileAttributes.contains(FileAttributes.FILE_ATTRIBUTE_DIRECTORY) &&
+                    (it.fileAttributes and FileAttributes.FILE_ATTRIBUTE_DIRECTORY.value) == 0L &&
                         it.fileName.substringAfterLast('.', "").lowercase() in imageExtensions
                 }
                 .map { it.fileName }

@@ -57,6 +57,10 @@ data object LibraryTab : Tab {
         // No-op for SMB mode
     }
 
+    suspend fun search(query: String) {
+        // No-op for SMB mode
+    }
+
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     override fun Content() {
