@@ -186,7 +186,21 @@ data object LibraryTab : Tab {
                         hasActiveFilters = state.hasActiveFilters,
                         showPageTabs = state.showCategoryTabs || !state.searchQuery.isNullOrEmpty(),
                         onChangeCurrentPage = screenModel::updateActiveCategoryIndex,
-                        onClickManga = { navigator.push(MangaScreen(it)) },
+                        onClickManga = { mangaId ->
+                            scope.launchIO {
+                                val manga = screenModel.getManga(mangaId)
+                                if (manga != null && manga.source == eu.kanade.tachiyomi.data.smb.SmbSource.ID) {
+                                    val chapter = screenModel.getNextUnreadChapter(manga)
+                                    if (chapter != null) {
+                                        context.startActivity(
+                                            ReaderActivity.newIntent(context, chapter.mangaId, chapter.id),
+                                        )
+                                    }
+                                } else {
+                                    navigator.push(MangaScreen(mangaId))
+                                }
+                            }
+                        },
                         onContinueReadingClicked = { it: LibraryManga ->
                             scope.launchIO {
                                 val chapter = screenModel.getNextUnreadChapter(it.manga)
