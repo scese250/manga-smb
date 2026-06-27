@@ -58,7 +58,7 @@ object SettingsSmbScreen : SearchableSettings {
                     Preference.PreferenceItem.EditTextPreference(
                         preference = smbPreferences.smbHost,
                         title = "Host / IP",
-                        subtitle = smbPreferences.smbHost.get().ifBlank { "ej. 192.168.1.100" },
+                        subtitle = smbPreferences.smbHost.get().ifBlank { "ej. 192.168.0.100" },
                     ),
                     Preference.PreferenceItem.EditTextPreference(
                         preference = smbPreferences.smbUser,
@@ -73,12 +73,12 @@ object SettingsSmbScreen : SearchableSettings {
                     Preference.PreferenceItem.EditTextPreference(
                         preference = smbPreferences.smbShareName,
                         title = "Nombre del recurso compartido",
-                        subtitle = smbPreferences.smbShareName.get().ifBlank { "ej. SharedFolder" },
+                        subtitle = smbPreferences.smbShareName.get().ifBlank { "El nombre del share en Windows, ej: Exhentai" },
                     ),
                     Preference.PreferenceItem.EditTextPreference(
                         preference = smbPreferences.smbBasePath,
-                        title = "Carpeta base (Nivel 1)",
-                        subtitle = smbPreferences.smbBasePath.get().ifBlank { "ej. Exhentai (dejar vacio si es la raiz)" },
+                        title = "Subcarpeta dentro del share (opcional)",
+                        subtitle = smbPreferences.smbBasePath.get().ifBlank { "Solo si las carpetas de categorias NO estan en la raiz del share. Dejar vacio si el share ya apunta a la carpeta correcta." },
                     ),
                 ),
             ),
