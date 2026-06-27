@@ -386,6 +386,16 @@ class LibraryScreenModel(
             downloadCache.changes,
         ) { libraryManga, preferences, _ ->
             libraryManga.map { manga ->
+                // For SMB source, use chapter-level page progress instead of chapter-level read count
+                val (smbReadCount, smbTotalPages) = if (manga.manga.source == eu.kanade.tachiyomi.data.smb.SmbSource.ID) {
+                    val chapter = getChaptersByMangaId.await(manga.id).firstOrNull()
+                    val lastPage = chapter?.lastPageRead ?: 0L
+                    val totalPages = chapter?.scanlator?.toLongOrNull() ?: 0L
+                    Pair(lastPage, totalPages)
+                } else {
+                    Pair(manga.readCount, manga.totalChapters)
+                }
+
                 LibraryItem(
                     libraryManga = manga,
                     downloadCount = downloadManager.getDownloadCount(manga.manga),
@@ -402,8 +412,8 @@ class LibraryScreenModel(
                         } else {
                             0
                         },
-                        readCount = manga.readCount,
-                        totalChapters = manga.totalChapters,
+                        readCount = smbReadCount,
+                        totalChapters = smbTotalPages,
                         isLocal = if (preferences.localBadge) {
                             manga.manga.isLocal()
                         } else {

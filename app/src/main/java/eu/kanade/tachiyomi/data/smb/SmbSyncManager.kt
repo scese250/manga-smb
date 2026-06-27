@@ -8,6 +8,7 @@ import logcat.LogPriority
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.category.repository.CategoryRepository
 import tachiyomi.domain.chapter.model.Chapter
+import tachiyomi.domain.chapter.model.toChapterUpdate
 import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.toMangaUpdate
@@ -127,7 +128,12 @@ class SmbSyncManager(
                         mangaRepository.setMangaCategories(dbManga.id, newCategoryList)
                     }
 
-                    // 6. Ensure dummy chapter exists
+                    // 6. Ensure dummy chapter exists with image count in scanlator
+                    val imageCount = try {
+                        smbClient.listImageFiles(mangaPath).size.toLong()
+                    } catch (e: Exception) {
+                        0L
+                    }
                     val dbChapter = chapterRepository.getChapterByUrlAndMangaId(mangaPath, dbManga.id)
                     if (dbChapter == null) {
                         val newChapter = Chapter.create().copy(
@@ -135,9 +141,15 @@ class SmbSyncManager(
                             url = mangaPath,
                             name = mangaName,
                             chapterNumber = 1.0,
-                            dateUpload = System.currentTimeMillis()
+                            dateUpload = System.currentTimeMillis(),
+                            scanlator = if (imageCount > 0) "$imageCount" else null,
                         )
                         chapterRepository.addAll(listOf(newChapter))
+                    } else if (imageCount > 0 && dbChapter.scanlator != "$imageCount") {
+                        // Update total page count if it changed
+                        chapterRepository.update(
+                            dbChapter.toChapterUpdate().copy(scanlator = "$imageCount")
+                        )
                     }
                 }
             }
