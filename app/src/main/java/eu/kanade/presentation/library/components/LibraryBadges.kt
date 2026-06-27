@@ -21,9 +21,10 @@ internal fun DownloadsBadge(count: Int) {
 }
 
 @Composable
-internal fun UnreadBadge(count: Long) {
-    if (count > 0) {
-        Badge(text = "$count")
+internal fun UnreadBadge(count: Long, readCount: Long = 0L, totalChapters: Long = 0L) {
+    if (count > 0 || readCount > 0 || totalChapters > 0) {
+        val text = if (totalChapters > 0) "$readCount/$totalChapters" else "$count"
+        Badge(text = text)
     }
 }
 

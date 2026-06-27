@@ -45,7 +45,11 @@ internal fun LibraryComfortableGrid(
                 ),
                 coverBadgeStart = {
                     DownloadsBadge(count = libraryItem.badges.downloadCount)
-                    UnreadBadge(count = libraryItem.badges.unreadCount)
+                    UnreadBadge(
+                        count = libraryItem.badges.unreadCount,
+                        readCount = libraryItem.badges.readCount,
+                        totalChapters = libraryItem.badges.totalChapters,
+                    )
                 },
                 coverBadgeEnd = {
                     LanguageBadge(

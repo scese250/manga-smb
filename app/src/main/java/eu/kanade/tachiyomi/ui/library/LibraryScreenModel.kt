@@ -402,6 +402,8 @@ class LibraryScreenModel(
                         } else {
                             0
                         },
+                        readCount = manga.readCount,
+                        totalChapters = manga.totalChapters,
                         isLocal = if (preferences.localBadge) {
                             manga.manga.isLocal()
                         } else {
