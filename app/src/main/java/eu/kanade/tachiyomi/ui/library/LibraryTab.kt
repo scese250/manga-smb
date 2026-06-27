@@ -110,9 +110,7 @@ data object LibraryTab : Tab {
                             activeCategoryIndex = state.activeCategoryIndex,
                             onCategorySelected = { /* update active index if needed */ },
                             onMangaClick = { manga ->
-                                context.startActivity(
-                                    SmbReaderActivity.newIntent(context, manga.smbPath, manga.name),
-                                )
+                                screenModel.openManga(context, manga)
                             },
                         )
                     }

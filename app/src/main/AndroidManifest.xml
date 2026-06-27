@@ -153,21 +153,17 @@
 
         <activity
             android:name=".ui.reader.ReaderActivity"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode"
             android:exported="false"
+            android:theme="@style/Theme.Tachiyomi.Reader"
             android:launchMode="singleTask">
             <intent-filter>
                 <action android:name="com.samsung.android.support.REMOTE_ACTION" />
             </intent-filter>
-
             <meta-data
                 android:name="com.samsung.android.support.REMOTE_ACTION"
                 android:resource="@xml/s_pen_actions" />
         </activity>
-
-        <activity
-            android:name=".ui.reader.SmbReaderActivity"
-            android:exported="false"
-            android:launchMode="singleTask" />
 
         <activity
             android:name=".ui.security.UnlockActivity"

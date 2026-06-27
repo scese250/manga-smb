@@ -54,6 +54,10 @@ class AndroidSourceManager(
                                 Injekt.get(),
                                 Injekt.get(),
                             ),
+                            eu.kanade.tachiyomi.data.smb.SmbSource.ID to eu.kanade.tachiyomi.data.smb.SmbSource(
+                                context,
+                                Injekt.get(),
+                            ),
                         ),
                     )
                     extensions.forEach { extension ->

@@ -18,10 +18,20 @@ import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.File
 
+import android.content.Intent
+import eu.kanade.tachiyomi.ui.reader.ReaderActivity
+import tachiyomi.domain.chapter.model.Chapter
+import tachiyomi.domain.chapter.repository.ChapterRepository
+import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.manga.model.toMangaUpdate
+import tachiyomi.domain.manga.repository.MangaRepository
+
 class SmbLibraryScreenModel(
     private val smbPreferences: SmbPreferences = Injekt.get(),
     private val smbClient: SmbClientWrapper = Injekt.get(),
     private val libraryCache: SmbLibraryCache = Injekt.get(),
+    private val mangaRepository: MangaRepository = Injekt.get(),
+    private val chapterRepository: ChapterRepository = Injekt.get(),
 ) : StateScreenModel<SmbLibraryScreenModel.State>(State()) {
 
     init {
@@ -165,6 +175,48 @@ class SmbLibraryScreenModel(
         screenModelScope.launchIO {
             val cached = CachedLibrary(categories = state.value.mangaByCategory)
             libraryCache.save(cached)
+        }
+    }
+
+    fun openManga(context: Context, mangaItem: SmbMangaItem) {
+        screenModelScope.launchIO {
+            // 1. Check or insert Manga
+            val smbSourceId = eu.kanade.tachiyomi.data.smb.SmbSource.ID
+            var dbManga = mangaRepository.getMangaByUrlAndSourceId(mangaItem.smbPath, smbSourceId)
+            if (dbManga == null) {
+                val newManga = Manga.create().copy(
+                    source = smbSourceId,
+                    url = mangaItem.smbPath,
+                    title = mangaItem.name,
+                    thumbnailUrl = mangaItem.coverCachePath,
+                    initialized = true
+                )
+                dbManga = mangaRepository.insertNetworkManga(listOf(newManga)).first()
+            } else if (dbManga.thumbnailUrl != mangaItem.coverCachePath) {
+                // Update cover if changed
+                val updatedManga = dbManga.copy(thumbnailUrl = mangaItem.coverCachePath)
+                mangaRepository.update(updatedManga.toMangaUpdate())
+            }
+
+            // 2. Check or insert Chapter
+            // SMB chapters act as a single chapter named after the manga
+            var dbChapter = chapterRepository.getChapterByUrlAndMangaId(mangaItem.smbPath, dbManga.id)
+            if (dbChapter == null) {
+                val newChapter = Chapter.create().copy(
+                    mangaId = dbManga.id,
+                    url = mangaItem.smbPath,
+                    name = mangaItem.name,
+                    chapterNumber = 1.0,
+                    dateUpload = System.currentTimeMillis()
+                )
+                dbChapter = chapterRepository.addAll(listOf(newChapter)).first()
+            }
+
+            // 3. Launch ReaderActivity with Manga ID and Chapter ID
+            withContext(Dispatchers.Main) {
+                val intent = ReaderActivity.newIntent(context, dbManga.id, dbChapter.id)
+                context.startActivity(intent)
+            }
         }
     }
 
