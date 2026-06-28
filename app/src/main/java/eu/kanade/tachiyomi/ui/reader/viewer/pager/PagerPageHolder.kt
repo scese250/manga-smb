@@ -62,6 +62,9 @@ class PagerPageHolder(
      */
     private var loadJob: Job? = null
 
+    private val isActivePage: Boolean
+        get() = (viewer.pager.adapter as? PagerViewerAdapter)?.items?.getOrNull(viewer.pager.currentItem) == page
+
     init {
         loadJob = scope.launch { loadPageAndProcessStatus() }
     }
@@ -288,7 +291,7 @@ class PagerPageHolder(
     override fun onScaleChanged(newScale: Float) {
         super.onScaleChanged(newScale)
         viewer.activity.hideMenu()
-        if (viewer is VerticalPagerMangaViewer) {
+        if (viewer is VerticalPagerMangaViewer && isActivePage) {
             val view = scaleImageView ?: return
             if (view.isReady && view.minScale > 0f) {
                 viewer.currentRelativeScale = newScale / view.minScale
