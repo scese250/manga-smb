@@ -36,7 +36,9 @@ import tachiyomi.presentation.core.util.collectAsState
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import androidx.compose.runtime.collectAsState as collectStateFlow
-
+import eu.kanade.tachiyomi.data.cache.CoverCache
+import coil3.ImageLoader
+import coil3.imageLoader
 object SettingsSmbScreen : SearchableSettings {
 
     @Composable
@@ -54,6 +56,21 @@ object SettingsSmbScreen : SearchableSettings {
         var isFetchingFolders by remember { mutableStateOf(false) }
 
         val enabledFolders by smbPreferences.enabledFolders.collectAsState()
+        val context = androidx.compose.ui.platform.LocalContext.current
+        val host by smbPreferences.smbHost.collectAsState()
+        val coverCache = remember { Injekt.get<CoverCache>() }
+        val imageLoader = context.imageLoader
+        var isClearingCache by remember { mutableStateOf(false) }
+        var cacheClearResult by remember { mutableStateOf<String?>(null) }
+        var currentCacheSize by remember { mutableStateOf(0L) }
+
+        androidx.compose.runtime.LaunchedEffect(Unit) {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                val coilSize = imageLoader.diskCache?.size ?: 0L
+                val smbSize = coverCache.getCacheSize()
+                currentCacheSize = coilSize + smbSize
+            }
+        }
 
         return listOf(
             Preference.PreferenceGroup(
@@ -112,7 +129,7 @@ object SettingsSmbScreen : SearchableSettings {
                                             isTesting = false
                                         }
                                     },
-                                    enabled = !isTesting && smbPreferences.smbHost.get().isNotBlank(),
+                                    enabled = !isTesting && host.isNotBlank(),
                                 ) {
                                     Text("Probar conexion")
                                 }
@@ -147,9 +164,9 @@ object SettingsSmbScreen : SearchableSettings {
                                         isFetchingFolders = false
                                     }
                                 },
-                                enabled = !isFetchingFolders && smbPreferences.isConfigured(),
+                                enabled = !isFetchingFolders && host.isNotBlank(),
                             ) {
-                                Text("Cargar carpetas (Nivel 2)")
+                                Text("Agregar carpetas")
                             }
                             if (isFetchingFolders) {
                                 CircularProgressIndicator(
@@ -189,6 +206,58 @@ object SettingsSmbScreen : SearchableSettings {
                                     color = MaterialTheme.colorScheme.error,
                                 )
                                 else -> Unit
+                            }
+
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Button(
+                                    onClick = {
+                                        scope.launch {
+                                            isClearingCache = true
+                                            cacheClearResult = null
+                                            imageLoader.diskCache?.clear()
+                                            val deleted = coverCache.clear()
+                                            
+                                            // Recalculate
+                                            val coilSize = imageLoader.diskCache?.size ?: 0L
+                                            val smbSize = coverCache.getCacheSize()
+                                            currentCacheSize = coilSize + smbSize
+                                            
+                                            cacheClearResult = "Cache limpiada. $deleted archivos eliminados."
+                                            isClearingCache = false
+                                        }
+                                    },
+                                    enabled = !isClearingCache,
+                                ) {
+                                    Text("Limpiar cache de miniaturas")
+                                }
+                                if (isClearingCache) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.padding(start = 8.dp),
+                                        strokeWidth = 2.dp,
+                                    )
+                                }
+                            }
+                            
+                            // Formateo del tamaño (e.g. "15.24 MB")
+                            val mbSize = currentCacheSize / 1024.0 / 1024.0
+                            val formattedSize = if (mbSize > 0.0) String.format(java.util.Locale.US, "%.2f MB", mbSize) else "0 MB"
+                            Text(
+                                text = "Peso actual de la cache: $formattedSize",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+
+                            if (cacheClearResult != null) {
+                                Text(
+                                    text = cacheClearResult!!,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
                             }
                         }
                     },

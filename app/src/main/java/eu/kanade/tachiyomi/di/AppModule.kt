@@ -135,6 +135,7 @@ class AppModule(val app: Application) : InjektModule {
 
         addSingletonFactory { SmbClientWrapper(get<SmbPreferences>()) }
         addSingletonFactory { SmbLibraryCache(app) }
+        addSingletonFactory { eu.kanade.tachiyomi.data.smb.SmbSyncManager() }
 
         // Asynchronously init expensive components for a faster cold start
         ContextCompat.getMainExecutor(app).execute {

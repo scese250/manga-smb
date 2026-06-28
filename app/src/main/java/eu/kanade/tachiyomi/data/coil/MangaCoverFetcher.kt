@@ -361,12 +361,29 @@ class MangaCoverFetcher(
         val smbClient: SmbClientWrapper = Injekt.get()
         val mangaPath = url!!.substringAfter("smb://")
 
-        val images = smbClient.listImageFiles(mangaPath)
-        if (images.isEmpty()) error("No images found in $mangaPath")
+        val isCbz = mangaPath.endsWith(".cbz", true) || mangaPath.endsWith(".zip", true)
+        val bytes = if (isCbz) {
+            val inputStream = smbClient.getFileInputStream(mangaPath) ?: error("Failed to open $mangaPath")
+            var firstImageBytes: ByteArray? = null
+            java.util.zip.ZipInputStream(inputStream).use { zis ->
+                var entry = zis.nextEntry
+                while (entry != null) {
+                    if (!entry.isDirectory && entry.name.substringAfterLast('.', "").lowercase() in listOf("jpg", "jpeg", "png", "gif", "webp", "bmp", "avif")) {
+                        firstImageBytes = zis.readBytes()
+                        break
+                    }
+                    entry = zis.nextEntry
+                }
+            }
+            firstImageBytes ?: error("No images found in $mangaPath")
+        } else {
+            val images = smbClient.listImageFiles(mangaPath)
+            if (images.isEmpty()) error("No images found in $mangaPath")
 
-        val firstImage = images.first()
-        val imagePath = "$mangaPath\\$firstImage"
-        val bytes = smbClient.getFileBytes(imagePath) ?: error("Failed to read $imagePath")
+            val firstImage = images.first()
+            val imagePath = "$mangaPath\\$firstImage"
+            smbClient.getFileBytes(imagePath) ?: error("Failed to read $imagePath")
+        }
 
         val compressed = compressCoverToWebP(bytes) ?: bytes
 

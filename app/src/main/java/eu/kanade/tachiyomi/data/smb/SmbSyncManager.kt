@@ -21,7 +21,7 @@ import java.io.File
 
 sealed class SyncState {
     object Idle : SyncState()
-    object Syncing : SyncState()
+    data class Syncing(val progress: Int = 0, val total: Int = 0, val message: String = "") : SyncState()
     data class Done(val mangaCount: Int) : SyncState()
     data class Error(val message: String) : SyncState()
 }
@@ -40,7 +40,7 @@ class SmbSyncManager(
     }
 
     suspend fun syncLibrary() = withContext(Dispatchers.IO) {
-        _stateFlow.value = SyncState.Syncing
+        _stateFlow.value = SyncState.Syncing(0, 0, "Iniciando...")
         try {
             var mangaCount = 0
             val enabledFolders = smbPreferences.enabledFolders.get()
@@ -76,9 +76,15 @@ class SmbSyncManager(
 
                 // 2. Scan mangas in this folder with modification date
                 val mangaFoldersWithDate = smbClient.listFoldersWithDate(folder)
-                mangaCount += mangaFoldersWithDate.size
+                val total = mangaFoldersWithDate.size
+                mangaCount += total
+                var current = 0
 
                 for ((mangaName, folderModifiedAt) in mangaFoldersWithDate) {
+                    current++
+                    if (current % 5 == 0 || current == total) {
+                        _stateFlow.value = SyncState.Syncing(current, total, mangaName)
+                    }
                     val mangaPath = "$folder\\$mangaName"
                     val smbSourceId = SmbSource.ID
                     val dateAdded = if (folderModifiedAt > 0) folderModifiedAt else System.currentTimeMillis()
@@ -150,6 +156,119 @@ class SmbSyncManager(
             logcat(LogPriority.ERROR, e) { "SMB Sync failed" }
             _stateFlow.value = SyncState.Error(e.message ?: "Error desconocido")
             return@withContext
+        }
+    }
+
+    suspend fun syncCategory(categoryName: String): Boolean = withContext(Dispatchers.IO) {
+        val enabledFolders = smbPreferences.enabledFolders.get()
+        val targetFolder = enabledFolders.find { folder ->
+            val folderName = folder.substringAfterLast("\\").takeIf { it.isNotEmpty() } ?: folder
+            folderName == categoryName
+        }
+        if (targetFolder == null) return@withContext false
+
+        _stateFlow.value = SyncState.Syncing(0, 0, "Iniciando...")
+        try {
+            var mangaCount = 0
+            val dbCategories = categoryRepository.getAll()
+            
+            val folderName = targetFolder.substringAfterLast("\\").takeIf { it.isNotEmpty() } ?: targetFolder
+            
+            // 1. Ensure category exists
+            var category = dbCategories.find { it.name == folderName }
+            if (category == null) {
+                val maxOrder = dbCategories.maxOfOrNull { it.order } ?: 0
+                val newCategory = Category(
+                    id = 0,
+                    name = folderName,
+                    order = maxOrder + 1,
+                    flags = 0
+                )
+                categoryRepository.insert(newCategory)
+                val updatedCategories = categoryRepository.getAll()
+                category = updatedCategories.find { it.name == folderName }
+            }
+            
+            if (category != null) {
+                _stateFlow.value = SyncState.Syncing(0, 0, "Obteniendo carpetas...")
+                val mangaFoldersWithDate = smbClient.listFoldersWithDate(targetFolder)
+                val total = mangaFoldersWithDate.size
+                mangaCount += total
+                
+                var current = 0
+
+                for ((mangaName, folderModifiedAt) in mangaFoldersWithDate) {
+                    current++
+                    // Actualizar UI frecuentemente pero sin saturar
+                    if (current % 5 == 0 || current == total || current == 1) {
+                        _stateFlow.value = SyncState.Syncing(current, total, mangaName)
+                    }
+                    val mangaPath = "$targetFolder\\$mangaName"
+                    val smbSourceId = SmbSource.ID
+                    val dateAdded = if (folderModifiedAt > 0) folderModifiedAt else System.currentTimeMillis()
+
+                    var dbManga = mangaRepository.getMangaByUrlAndSourceId(mangaPath, smbSourceId)
+                    val coverPath = "smb://$mangaPath"
+
+                    if (dbManga == null) {
+                        val newManga = Manga.create().copy(
+                            source = smbSourceId,
+                            url = mangaPath,
+                            title = mangaName,
+                            thumbnailUrl = coverPath,
+                            favorite = true,
+                            dateAdded = dateAdded,
+                            initialized = true
+                        )
+                        dbManga = mangaRepository.insertNetworkManga(listOf(newManga)).firstOrNull()
+                    } else {
+                        var changed = false
+                        var updatedManga = dbManga
+                        if (!dbManga.favorite) {
+                            updatedManga = updatedManga.copy(favorite = true, dateAdded = dateAdded)
+                            changed = true
+                        }
+                        if (dbManga.dateAdded != dateAdded && dateAdded > 0) {
+                            updatedManga = updatedManga.copy(dateAdded = dateAdded)
+                            changed = true
+                        }
+                        if (dbManga.thumbnailUrl != coverPath) {
+                            updatedManga = updatedManga.copy(thumbnailUrl = coverPath)
+                            changed = true
+                        }
+                        if (changed) {
+                            mangaRepository.update(updatedManga.toMangaUpdate())
+                            dbManga = updatedManga
+                        }
+                    }
+
+                    if (dbManga == null) continue
+
+                    val currentCategories = categoryRepository.getCategoriesByMangaId(dbManga.id)
+                    if (currentCategories.none { it.id == category.id }) {
+                        val newCategoryList = currentCategories.map { it.id } + category.id
+                        mangaRepository.setMangaCategories(dbManga.id, newCategoryList)
+                    }
+
+                    val dbChapter = chapterRepository.getChapterByUrlAndMangaId(mangaPath, dbManga.id)
+                    if (dbChapter == null) {
+                        val newChapter = Chapter.create().copy(
+                            mangaId = dbManga.id,
+                            url = mangaPath,
+                            name = mangaName,
+                            chapterNumber = 1.0,
+                            dateUpload = System.currentTimeMillis(),
+                        )
+                        chapterRepository.addAll(listOf(newChapter))
+                    }
+                }
+            }
+            _stateFlow.value = SyncState.Idle
+            return@withContext true
+        } catch (e: Exception) {
+            logcat(LogPriority.ERROR, e) { "SMB Category Sync failed" }
+            _stateFlow.value = SyncState.Idle
+            return@withContext true
         }
     }
 }

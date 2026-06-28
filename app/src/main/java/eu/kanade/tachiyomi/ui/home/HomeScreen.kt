@@ -8,6 +8,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.padding
@@ -42,6 +43,7 @@ import eu.kanade.tachiyomi.ui.history.HistoryTab
 import eu.kanade.tachiyomi.ui.library.LibraryTab
 import eu.kanade.tachiyomi.ui.manga.MangaScreen
 import eu.kanade.tachiyomi.ui.more.MoreTab
+import eu.kanade.tachiyomi.ui.recent.RecentlyAddedTab
 import eu.kanade.tachiyomi.ui.updates.UpdatesTab
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.collectLatest
@@ -73,9 +75,8 @@ object HomeScreen : Screen() {
 
     private val TABS = listOf(
         LibraryTab,
-        UpdatesTab,
+        RecentlyAddedTab,
         HistoryTab,
-        BrowseTab,
         MoreTab,
     )
 
@@ -154,14 +155,9 @@ object HomeScreen : Screen() {
                     openTabEvent.receiveAsFlow().collectLatest {
                         tabNavigator.current = when (it) {
                             is Tab.Library -> LibraryTab
-                            Tab.Updates -> UpdatesTab
+                            Tab.Updates -> RecentlyAddedTab
                             Tab.History -> HistoryTab
-                            is Tab.Browse -> {
-                                if (it.toExtensions) {
-                                    BrowseTab.showExtension()
-                                }
-                                BrowseTab
-                            }
+                            is Tab.Browse -> LibraryTab // Redirect Browse to Library since it's hidden
                             is Tab.More -> MoreTab
                         }
 

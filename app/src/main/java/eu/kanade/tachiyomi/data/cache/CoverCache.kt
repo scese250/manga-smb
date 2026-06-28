@@ -102,4 +102,28 @@ class CoverCache(private val context: Context) {
         return context.getExternalFilesDir(dir)
             ?: File(context.filesDir, dir).also { it.mkdirs() }
     }
+
+    /**
+     * Clear all cover caches
+     */
+    fun clear(): Int {
+        var deleted = 0
+        cacheDir.listFiles()?.forEach {
+            if (it.delete()) deleted++
+        }
+        customCoverCacheDir.listFiles()?.forEach {
+            if (it.delete()) deleted++
+        }
+        return deleted
+    }
+
+    /**
+     * Get size of all cover caches in bytes
+     */
+    fun getCacheSize(): Long {
+        var size = 0L
+        cacheDir.listFiles()?.forEach { size += it.length() }
+        customCoverCacheDir.listFiles()?.forEach { size += it.length() }
+        return size
+    }
 }

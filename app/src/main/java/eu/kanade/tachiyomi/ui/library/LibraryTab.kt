@@ -4,6 +4,18 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.graphics.res.animatedVectorResource
 import androidx.compose.animation.graphics.res.rememberAnimatedVectorPainter
 import androidx.compose.animation.graphics.vector.AnimatedImageVector
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import eu.kanade.tachiyomi.data.smb.SyncState
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
@@ -60,6 +72,9 @@ import tachiyomi.presentation.core.screens.EmptyScreen
 import tachiyomi.presentation.core.screens.EmptyScreenAction
 import tachiyomi.presentation.core.screens.LoadingScreen
 import tachiyomi.source.local.isLocal
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
+import eu.kanade.tachiyomi.data.smb.SmbSyncManager
 
 data object LibraryTab : Tab {
 
@@ -92,7 +107,28 @@ data object LibraryTab : Tab {
 
         val snackbarHostState = remember { SnackbarHostState() }
 
+        val smbSyncManager = remember { Injekt.get<SmbSyncManager>() }
+        val smbSyncState by SmbSyncManager.stateFlow.collectAsState()
+
         val onClickRefresh: (Category?) -> Boolean = { category ->
+            if (category != null) {
+                scope.launch {
+                    val msgRes = if (smbSyncManager.syncCategory(category.name)) {
+                        "Escaneando ${category.name} en SMB..."
+                    } else {
+                        "Esta carpeta no existe en el SMB"
+                    }
+                    snackbarHostState.showSnackbar(msgRes)
+                }
+                true
+            } else {
+                scope.launch {
+                    snackbarHostState.showSnackbar("Ve a una categoría específica para escanear")
+                }
+                false
+            }
+            
+            /* CÓDIGO ANTIGUO (Deshabilitado a petición del usuario para mantener estabilidad sin borrarlo)
             val started = LibraryUpdateJob.startNow(context, category)
             scope.launch {
                 val msgRes = when {
@@ -103,6 +139,7 @@ data object LibraryTab : Tab {
                 snackbarHostState.showSnackbar(context.stringResource(msgRes))
             }
             started
+            */
         }
 
         Scaffold(
@@ -177,57 +214,99 @@ data object LibraryTab : Tab {
                     )
                 }
                 else -> {
-                    LibraryContent(
-                        categories = state.displayedCategories,
-                        searchQuery = state.searchQuery,
-                        selection = state.selection,
-                        contentPadding = contentPadding,
-                        currentPage = state.coercedActiveCategoryIndex,
-                        hasActiveFilters = state.hasActiveFilters,
-                        showPageTabs = state.showCategoryTabs || !state.searchQuery.isNullOrEmpty(),
-                        onChangeCurrentPage = screenModel::updateActiveCategoryIndex,
-                        onClickManga = { mangaId ->
-                            scope.launchIO {
-                                val manga = screenModel.getManga(mangaId)
-                                if (manga != null && manga.source == eu.kanade.tachiyomi.data.smb.SmbSource.ID) {
-                                    val chapter = screenModel.getNextUnreadChapter(manga)
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        LibraryContent(
+                            categories = state.displayedCategories,
+                            searchQuery = state.searchQuery,
+                            selection = state.selection,
+                            contentPadding = contentPadding,
+                            currentPage = state.coercedActiveCategoryIndex,
+                            hasActiveFilters = state.hasActiveFilters,
+                            showPageTabs = state.showCategoryTabs || !state.searchQuery.isNullOrEmpty(),
+                            onChangeCurrentPage = screenModel::updateActiveCategoryIndex,
+                            onClickManga = { mangaId ->
+                                scope.launchIO {
+                                    val manga = screenModel.getManga(mangaId)
+                                    if (manga != null && manga.source == eu.kanade.tachiyomi.data.smb.SmbSource.ID) {
+                                        val chapter = screenModel.getNextUnreadChapter(manga)
+                                        if (chapter != null) {
+                                            context.startActivity(
+                                                ReaderActivity.newIntent(context, chapter.mangaId, chapter.id),
+                                            )
+                                        }
+                                    } else {
+                                        navigator.push(MangaScreen(mangaId))
+                                    }
+                                }
+                            },
+                            onContinueReadingClicked = { it: LibraryManga ->
+                                scope.launchIO {
+                                    val chapter = screenModel.getNextUnreadChapter(it.manga)
                                     if (chapter != null) {
                                         context.startActivity(
                                             ReaderActivity.newIntent(context, chapter.mangaId, chapter.id),
                                         )
+                                    } else {
+                                        snackbarHostState.showSnackbar(context.stringResource(MR.strings.no_next_chapter))
                                     }
-                                } else {
-                                    navigator.push(MangaScreen(mangaId))
                                 }
-                            }
-                        },
-                        onContinueReadingClicked = { it: LibraryManga ->
-                            scope.launchIO {
-                                val chapter = screenModel.getNextUnreadChapter(it.manga)
-                                if (chapter != null) {
-                                    context.startActivity(
-                                        ReaderActivity.newIntent(context, chapter.mangaId, chapter.id),
+                                Unit
+                            }.takeIf { state.showMangaContinueButton },
+                            onToggleSelection = screenModel::toggleSelection,
+                            onToggleRangeSelection = { category, manga ->
+                                screenModel.toggleRangeSelection(category, manga)
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            },
+                            onRefresh = { onClickRefresh(state.activeCategory) },
+                            onGlobalSearchClicked = {
+                                navigator.push(GlobalSearchScreen(screenModel.state.value.searchQuery ?: ""))
+                            },
+                            getItemCountForCategory = { state.getItemCountForCategory(it) },
+                            getDisplayMode = { screenModel.getDisplayMode() },
+                            getColumnsForOrientation = { screenModel.getColumnsForOrientation(it) },
+                            getItemsForCategory = { state.getItemsForCategory(it) },
+                        )
+                        
+                        // Overlay para mostrar el progreso de escaneo SMB
+                        val syncState = smbSyncState
+                        if (syncState is SyncState.Syncing) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .fillMaxWidth()
+                                    .padding(
+                                        start = 16.dp, 
+                                        end = 16.dp, 
+                                        bottom = contentPadding.calculateBottomPadding() + 16.dp,
+                                        top = 16.dp
                                     )
-                                } else {
-                                    snackbarHostState.showSnackbar(context.stringResource(MR.strings.no_next_chapter))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.shapes.medium)
+                                    .padding(16.dp)
+                            ) {
+                                Column {
+                                    Text(
+                                        text = if (syncState.total == 0) syncState.message else "Escaneando: ${syncState.message}",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    if (syncState.total > 0) {
+                                        LinearProgressIndicator(
+                                            progress = { syncState.progress.toFloat() / syncState.total.toFloat() },
+                                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                                        )
+                                        Text(
+                                            text = "${syncState.progress} / ${syncState.total}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            modifier = Modifier.align(Alignment.End).padding(top = 4.dp),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
                                 }
                             }
-                            Unit
-                        }.takeIf { state.showMangaContinueButton },
-                        onToggleSelection = screenModel::toggleSelection,
-                        onToggleRangeSelection = { category, manga ->
-                            screenModel.toggleRangeSelection(category, manga)
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        },
-                        onRefresh = { onClickRefresh(state.activeCategory) },
-                        onGlobalSearchClicked = {
-                            navigator.push(GlobalSearchScreen(screenModel.state.value.searchQuery ?: ""))
-                        },
-                        getItemCountForCategory = { state.getItemCountForCategory(it) },
-                        getDisplayMode = { screenModel.getDisplayMode() },
-                        getColumnsForOrientation = { screenModel.getColumnsForOrientation(it) },
-                        getItemsForCategory = { state.getItemsForCategory(it) },
-                    )
+                        }
+                    }
                 }
             }
         }
