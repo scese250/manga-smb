@@ -58,12 +58,13 @@ class SmbSyncManager(
                 
                 if (category == null) continue
 
-                // 2. Scan mangas in this folder
-                val mangaFolders = smbClient.listFolders(folder)
-                
-                for (mangaName in mangaFolders) {
+                // 2. Scan mangas in this folder with modification date
+                val mangaFoldersWithDate = smbClient.listFoldersWithDate(folder)
+
+                for ((mangaName, folderModifiedAt) in mangaFoldersWithDate) {
                     val mangaPath = "$folder\\$mangaName"
                     val smbSourceId = SmbSource.ID
+                    val dateAdded = if (folderModifiedAt > 0) folderModifiedAt else System.currentTimeMillis()
 
                     // 3. Ensure manga exists
                     var dbManga = mangaRepository.getMangaByUrlAndSourceId(mangaPath, smbSourceId)
@@ -96,8 +97,8 @@ class SmbSyncManager(
                             url = mangaPath,
                             title = mangaName,
                             thumbnailUrl = coverPath,
-                            favorite = true, // Force it to appear in library
-                            dateAdded = System.currentTimeMillis(),
+                            favorite = true,
+                            dateAdded = dateAdded,
                             initialized = true
                         )
                         dbManga = mangaRepository.insertNetworkManga(listOf(newManga)).firstOrNull()
@@ -106,7 +107,11 @@ class SmbSyncManager(
                         var changed = false
                         var updatedManga = dbManga
                         if (!dbManga.favorite) {
-                            updatedManga = updatedManga.copy(favorite = true, dateAdded = System.currentTimeMillis())
+                            updatedManga = updatedManga.copy(favorite = true, dateAdded = dateAdded)
+                            changed = true
+                        }
+                        if (dbManga.dateAdded != dateAdded && dateAdded > 0) {
+                            updatedManga = updatedManga.copy(dateAdded = dateAdded)
                             changed = true
                         }
                         if (dbManga.thumbnailUrl != coverPath) {

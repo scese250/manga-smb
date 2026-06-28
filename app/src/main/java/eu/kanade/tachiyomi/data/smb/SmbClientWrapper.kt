@@ -103,6 +103,34 @@ class SmbClientWrapper(
         }
     }
 
+    /**
+     * Returns a list of (folderName, lastModifiedMs) pairs.
+     * lastModifiedMs is milliseconds since Unix epoch from the SMB server's last write time.
+     */
+    suspend fun listFoldersWithDate(path: String): List<Pair<String, Long>> = withContext(Dispatchers.IO) {
+        try {
+            val diskShare = ensureConnected()
+            val entries = diskShare.list(path)
+            entries
+                .filter {
+                    (it.fileAttributes and FileAttributes.FILE_ATTRIBUTE_DIRECTORY.value) != 0L &&
+                        it.fileName != "." && it.fileName != ".."
+                }
+                .map { entry ->
+                    val lastWriteMs = try {
+                        entry.lastWriteTime.toDate().time
+                    } catch (_: Exception) {
+                        0L
+                    }
+                    entry.fileName to lastWriteMs
+                }
+                .sortedBy { it.first }
+        } catch (e: Exception) {
+            disconnect()
+            emptyList()
+        }
+    }
+
     suspend fun listImageFiles(path: String): List<String> = withContext(Dispatchers.IO) {
         try {
             val diskShare = ensureConnected()
