@@ -88,15 +88,28 @@ class SmbClientWrapper(
 
     suspend fun listFolders(path: String): List<String> = withContext(Dispatchers.IO) {
         try {
-            val diskShare = ensureConnected()
-            val entries = diskShare.list(path)
-            entries
-                .filter {
-                    (it.fileAttributes and FileAttributes.FILE_ATTRIBUTE_DIRECTORY.value) != 0L &&
-                        it.fileName != "." && it.fileName != ".."
-                }
-                .map { it.fileName }
-                .sorted()
+            var diskShare = ensureConnected()
+            try {
+                val entries = diskShare.list(path)
+                return@withContext entries
+                    .filter {
+                        (it.fileAttributes and FileAttributes.FILE_ATTRIBUTE_DIRECTORY.value) != 0L &&
+                            it.fileName != "." && it.fileName != ".."
+                    }
+                    .map { it.fileName }
+                    .sorted()
+            } catch (e: Exception) {
+                disconnect()
+                diskShare = ensureConnected()
+                val entries = diskShare.list(path)
+                return@withContext entries
+                    .filter {
+                        (it.fileAttributes and FileAttributes.FILE_ATTRIBUTE_DIRECTORY.value) != 0L &&
+                            it.fileName != "." && it.fileName != ".."
+                    }
+                    .map { it.fileName }
+                    .sorted()
+            }
         } catch (e: Exception) {
             disconnect()
             emptyList()
@@ -109,22 +122,42 @@ class SmbClientWrapper(
      */
     suspend fun listFoldersWithDate(path: String): List<Pair<String, Long>> = withContext(Dispatchers.IO) {
         try {
-            val diskShare = ensureConnected()
-            val entries = diskShare.list(path)
-            entries
-                .filter {
-                    (it.fileAttributes and FileAttributes.FILE_ATTRIBUTE_DIRECTORY.value) != 0L &&
-                        it.fileName != "." && it.fileName != ".."
-                }
-                .map { entry ->
-                    val lastWriteMs = try {
-                        entry.lastWriteTime.toDate().time
-                    } catch (_: Exception) {
-                        0L
+            var diskShare = ensureConnected()
+            try {
+                val entries = diskShare.list(path)
+                return@withContext entries
+                    .filter {
+                        (it.fileAttributes and FileAttributes.FILE_ATTRIBUTE_DIRECTORY.value) != 0L &&
+                            it.fileName != "." && it.fileName != ".."
                     }
-                    entry.fileName to lastWriteMs
-                }
-                .sortedBy { it.first }
+                    .map { entry ->
+                        val lastWriteMs = try {
+                            entry.lastWriteTime.toDate().time
+                        } catch (_: Exception) {
+                            0L
+                        }
+                        entry.fileName to lastWriteMs
+                    }
+                    .sortedBy { it.first }
+            } catch (e: Exception) {
+                disconnect()
+                diskShare = ensureConnected()
+                val entries = diskShare.list(path)
+                return@withContext entries
+                    .filter {
+                        (it.fileAttributes and FileAttributes.FILE_ATTRIBUTE_DIRECTORY.value) != 0L &&
+                            it.fileName != "." && it.fileName != ".."
+                    }
+                    .map { entry ->
+                        val lastWriteMs = try {
+                            entry.lastWriteTime.toDate().time
+                        } catch (_: Exception) {
+                            0L
+                        }
+                        entry.fileName to lastWriteMs
+                    }
+                    .sortedBy { it.first }
+            }
         } catch (e: Exception) {
             disconnect()
             emptyList()
@@ -133,15 +166,28 @@ class SmbClientWrapper(
 
     suspend fun listImageFiles(path: String): List<String> = withContext(Dispatchers.IO) {
         try {
-            val diskShare = ensureConnected()
-            val entries = diskShare.list(path)
-            entries
-                .filter {
-                    (it.fileAttributes and FileAttributes.FILE_ATTRIBUTE_DIRECTORY.value) == 0L &&
-                        it.fileName.substringAfterLast('.', "").lowercase() in imageExtensions
-                }
-                .map { it.fileName }
-                .sortedWith(NaturalOrderComparator)
+            var diskShare = ensureConnected()
+            try {
+                val entries = diskShare.list(path)
+                return@withContext entries
+                    .filter {
+                        (it.fileAttributes and FileAttributes.FILE_ATTRIBUTE_DIRECTORY.value) == 0L &&
+                            it.fileName.substringAfterLast('.', "").lowercase() in imageExtensions
+                    }
+                    .map { it.fileName }
+                    .sortedWith(NaturalOrderComparator)
+            } catch (e: Exception) {
+                disconnect()
+                diskShare = ensureConnected()
+                val entries = diskShare.list(path)
+                return@withContext entries
+                    .filter {
+                        (it.fileAttributes and FileAttributes.FILE_ATTRIBUTE_DIRECTORY.value) == 0L &&
+                            it.fileName.substringAfterLast('.', "").lowercase() in imageExtensions
+                    }
+                    .map { it.fileName }
+                    .sortedWith(NaturalOrderComparator)
+            }
         } catch (e: Exception) {
             disconnect()
             emptyList()

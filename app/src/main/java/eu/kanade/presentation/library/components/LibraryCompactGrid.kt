@@ -53,6 +53,7 @@ internal fun LibraryCompactGrid(
                     )
                 },
                 coverBadgeEnd = {
+                    EnglishBadge(title = manga.title)
                     LanguageBadge(
                         isLocal = libraryItem.badges.isLocal,
                         sourceLanguage = libraryItem.badges.sourceLanguage,

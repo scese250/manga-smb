@@ -8,6 +8,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.PreviewLightDark
 import eu.kanade.presentation.theme.TachiyomiPreviewTheme
 import tachiyomi.presentation.core.components.Badge
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Text
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.Modifier
 
 @Composable
 internal fun DownloadsBadge(count: Int) {
@@ -45,6 +53,28 @@ internal fun LanguageBadge(
             text = sourceLanguage.uppercase(),
             color = MaterialTheme.colorScheme.tertiary,
             textColor = MaterialTheme.colorScheme.onTertiary,
+        )
+    }
+}
+
+@Composable
+internal fun EnglishBadge(title: String) {
+    if (title.contains("[English]", ignoreCase = true) || title.contains("[Eng]", ignoreCase = true)) {
+        val neonGreen = Color(0xFF39FF14)
+        Text(
+            text = "English",
+            modifier = Modifier
+                .background(Color(0x80000000))
+                .padding(horizontal = 4.dp, vertical = 2.dp),
+            color = neonGreen,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            style = MaterialTheme.typography.bodySmall.copy(
+                shadow = Shadow(
+                    color = neonGreen,
+                    blurRadius = 12f
+                )
+            ),
         )
     }
 }
