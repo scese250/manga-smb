@@ -9,6 +9,8 @@ import eu.kanade.tachiyomi.util.lang.compareToCaseInsensitiveNaturalOrder
 import tachiyomi.core.common.util.system.ImageUtil
 import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.chapter.model.toChapterUpdate
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.injectLazy
 
 /**
@@ -20,16 +22,12 @@ internal class SmbPageLoader(
 ) : PageLoader() {
 
     override var isLocal: Boolean = true
-    private var smbClient: SmbClientWrapper? = null
+    private val smbClient: SmbClientWrapper by injectLazy()
     private val chapterRepository: ChapterRepository by injectLazy()
 
     override suspend fun getPages(): List<ReaderPage> {
-        if (smbClient == null) {
-            smbClient = SmbClientWrapper(smbPreferences)
-        }
-        
         val chapterUrl = chapter.chapter.url // This is the SMB path to the folder
-        val images = smbClient?.listImageFiles(chapterUrl) ?: emptyList()
+        val images = smbClient.listImageFiles(chapterUrl) ?: emptyList()
         
         // Update chapter scanlator with image count dynamically if needed
         val imageCountStr = images.size.toString()
@@ -52,7 +50,7 @@ internal class SmbPageLoader(
                     // Returning an InputStream directly allows ReaderPage to read the bytes.
                     // runBlocking because getFileInputStream is a suspend function
                     kotlinx.coroutines.runBlocking {
-                        SmbClientWrapper(smbPreferences).getFileInputStream(fullPath)
+                        smbClient.getFileInputStream(fullPath)
                             ?: throw Exception("Could not open file")
                     }
                 }
@@ -63,9 +61,12 @@ internal class SmbPageLoader(
             }
     }
 
+    override fun retryPage(page: ReaderPage) {
+        page.status = Page.State.Queue
+        page.status = Page.State.Ready
+    }
+
     override fun recycle() {
         super.recycle()
-        smbClient?.disconnect()
-        smbClient = null
     }
 }
