@@ -334,6 +334,7 @@
     <string name="label_sources">Fuentes</string>
     <string name="action_select_inverse">Invertir selección</string>
     <string name="vertical_plus_viewer">Tira vertical discontinua</string>
+    <string name="vertical_plus_manga_viewer">Tira vertical discontinua (Manga)</string>
     <string name="pref_webtoon_side_padding">Espaciado lateral</string>
     <string name="pinned_sources">Ancladas</string>
     <string name="action_unpin">Desanclar</string>
