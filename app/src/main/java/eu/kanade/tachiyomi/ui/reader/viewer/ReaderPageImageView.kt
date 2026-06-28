@@ -66,6 +66,9 @@ open class ReaderPageImageView @JvmOverloads constructor(
 
     private var pageView: View? = null
 
+    val scaleImageView: SubsamplingScaleImageView?
+        get() = pageView as? SubsamplingScaleImageView
+
     private var config: Config? = null
 
     var onImageLoaded: (() -> Unit)? = null

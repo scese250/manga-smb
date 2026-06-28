@@ -70,6 +70,7 @@
     <string name="left_to_right_viewer">Por páginas, de izquierda a derecha</string>
     <string name="right_to_left_viewer">Por páginas, de derecha a izquierda</string>
     <string name="vertical_viewer">Por páginas, de arriba abajo</string>
+    <string name="vertical_manga_viewer">Por páginas, de arriba abajo manga</string>
     <string name="webtoon_viewer">Tira vertical continua</string>
     <string name="pref_image_scale_type">Método de ampliación</string>
     <string name="scale_type_fit_screen">Ajustar al tamaño de pantalla</string>
@@ -334,7 +335,6 @@
     <string name="label_sources">Fuentes</string>
     <string name="action_select_inverse">Invertir selección</string>
     <string name="vertical_plus_viewer">Tira vertical discontinua</string>
-    <string name="vertical_plus_manga_viewer">Tira vertical discontinua (Manga)</string>
     <string name="pref_webtoon_side_padding">Espaciado lateral</string>
     <string name="pinned_sources">Ancladas</string>
     <string name="action_unpin">Desanclar</string>

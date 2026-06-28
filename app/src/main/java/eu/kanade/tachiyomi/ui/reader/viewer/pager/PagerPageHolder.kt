@@ -253,6 +253,23 @@ class PagerPageHolder(
     override fun onImageLoaded() {
         super.onImageLoaded()
         progressIndicator?.hide()
+        applyMangaZoomAndSnap()
+    }
+
+    override fun onPageSelected(forward: Boolean) {
+        super.onPageSelected(forward)
+        applyMangaZoomAndSnap()
+    }
+
+    private fun applyMangaZoomAndSnap() {
+        if (viewer is VerticalPagerMangaViewer) {
+            val view = scaleImageView ?: return
+            if (!view.isReady) return
+            val savedScale = viewer.currentScale
+            if (savedScale > 1f) {
+                view.setScaleAndCenter(savedScale, android.graphics.PointF(view.sWidth.toFloat(), 0f))
+            }
+        }
     }
 
     /**
@@ -269,6 +286,9 @@ class PagerPageHolder(
     override fun onScaleChanged(newScale: Float) {
         super.onScaleChanged(newScale)
         viewer.activity.hideMenu()
+        if (viewer is VerticalPagerMangaViewer) {
+            viewer.currentScale = newScale
+        }
     }
 
     private fun showErrorLayout(error: Throwable?): ReaderErrorBinding {

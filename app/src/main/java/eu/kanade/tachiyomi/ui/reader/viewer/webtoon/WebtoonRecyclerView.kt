@@ -34,19 +34,6 @@ class WebtoonRecyclerView @JvmOverloads constructor(
     private var firstVisibleItemPosition = 0
     private var lastVisibleItemPosition = 0
     private var currentScale = DEFAULT_RATE
-
-    /** Exposes current zoom scale for subviewers. */
-    fun getCurrentScale(): Float = currentScale
-
-    /**
-     * When zoomed in, snaps the horizontal position to the rightmost side of the page.
-     * Useful for manga (right-to-left) reading where page content starts on the right.
-     */
-    fun snapToRightWithZoom() {
-        if (currentScale > DEFAULT_RATE) {
-            x = -halfWidth * (currentScale - 1)
-        }
-    }
     var zoomOutDisabled = false
         set(value) {
             field = value
