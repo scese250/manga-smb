@@ -34,10 +34,13 @@ internal class SmbPageLoader(
         // Update chapter scanlator with image count dynamically if needed
         val imageCountStr = images.size.toString()
         if (images.isNotEmpty() && chapter.chapter.scanlator != imageCountStr) {
-            val dbChapter = chapterRepository.getChapterById(chapter.chapter.id)
-            if (dbChapter != null) {
-                chapterRepository.update(dbChapter.toChapterUpdate().copy(scanlator = imageCountStr))
-                chapter.chapter = chapter.chapter.copy(scanlator = imageCountStr)
+            val chapterId = chapter.chapter.id
+            if (chapterId != null) {
+                val dbChapter = chapterRepository.getChapterById(chapterId)
+                if (dbChapter != null) {
+                    chapterRepository.update(dbChapter.toChapterUpdate().copy(scanlator = imageCountStr))
+                    chapter.chapter.scanlator = imageCountStr
+                }
             }
         }
         
