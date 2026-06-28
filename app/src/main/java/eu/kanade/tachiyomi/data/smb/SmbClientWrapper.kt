@@ -150,17 +150,33 @@ class SmbClientWrapper(
 
     suspend fun getFileInputStream(path: String): InputStream? = withContext(Dispatchers.IO) {
         try {
-            val diskShare = ensureConnected()
-            val file = diskShare.openFile(
-                path,
-                EnumSet.of(AccessMask.GENERIC_READ),
-                null,
-                SMB2ShareAccess.ALL,
-                SMB2CreateDisposition.FILE_OPEN,
-                EnumSet.of(SMB2CreateOptions.FILE_NON_DIRECTORY_FILE),
-            )
-            file.inputStream
+            var diskShare = ensureConnected()
+            try {
+                val file = diskShare.openFile(
+                    path,
+                    EnumSet.of(AccessMask.GENERIC_READ),
+                    null,
+                    SMB2ShareAccess.ALL,
+                    SMB2CreateDisposition.FILE_OPEN,
+                    EnumSet.of(SMB2CreateOptions.FILE_NON_DIRECTORY_FILE),
+                )
+                return@withContext file.inputStream
+            } catch (e: Exception) {
+                // Connection might be stale or dropped by server due to inactivity
+                disconnect()
+                diskShare = ensureConnected()
+                val file = diskShare.openFile(
+                    path,
+                    EnumSet.of(AccessMask.GENERIC_READ),
+                    null,
+                    SMB2ShareAccess.ALL,
+                    SMB2CreateDisposition.FILE_OPEN,
+                    EnumSet.of(SMB2CreateOptions.FILE_NON_DIRECTORY_FILE),
+                )
+                return@withContext file.inputStream
+            }
         } catch (e: Exception) {
+            disconnect()
             null
         }
     }
