@@ -357,37 +357,32 @@ class MangaCoverFetcher(
             )
         }
 
-        // Fetch from SMB
-        val smbPreferences: SmbPreferences = Injekt.get()
-        val smbClient = SmbClientWrapper(smbPreferences)
+        // Fetch from SMB using the shared singleton to avoid per-request connection overhead
+        val smbClient: SmbClientWrapper = Injekt.get()
         val mangaPath = url!!.substringAfter("smb://")
-        
-        return try {
-            val images = smbClient.listImageFiles(mangaPath)
-            if (images.isEmpty()) error("No images found in $mangaPath")
-            
-            val firstImage = images.first()
-            val imagePath = "$mangaPath\\$firstImage"
-            val bytes = smbClient.getFileBytes(imagePath) ?: error("Failed to read $imagePath")
-            
-            val compressed = compressCoverToWebP(bytes) ?: bytes
-            
-            // Write directly to cache
-            if (libraryCoverCacheFile != null && options.diskCachePolicy.writeEnabled) {
-                libraryCoverCacheFile.parentFile?.mkdirs()
-                libraryCoverCacheFile.delete()
-                libraryCoverCacheFile.writeBytes(compressed)
-                fileLoader(libraryCoverCacheFile)
-            } else {
-                val source = okio.Buffer().write(compressed)
-                SourceFetchResult(
-                    source = ImageSource(source = source, fileSystem = FileSystem.SYSTEM),
-                    mimeType = "image/*",
-                    dataSource = DataSource.NETWORK,
-                )
-            }
-        } finally {
-            smbClient.disconnect()
+
+        val images = smbClient.listImageFiles(mangaPath)
+        if (images.isEmpty()) error("No images found in $mangaPath")
+
+        val firstImage = images.first()
+        val imagePath = "$mangaPath\\$firstImage"
+        val bytes = smbClient.getFileBytes(imagePath) ?: error("Failed to read $imagePath")
+
+        val compressed = compressCoverToWebP(bytes) ?: bytes
+
+        // Write directly to cache
+        return if (libraryCoverCacheFile != null && options.diskCachePolicy.writeEnabled) {
+            libraryCoverCacheFile.parentFile?.mkdirs()
+            libraryCoverCacheFile.delete()
+            libraryCoverCacheFile.writeBytes(compressed)
+            fileLoader(libraryCoverCacheFile)
+        } else {
+            val source = okio.Buffer().write(compressed)
+            SourceFetchResult(
+                source = ImageSource(source = source, fileSystem = FileSystem.SYSTEM),
+                mimeType = "image/*",
+                dataSource = DataSource.NETWORK,
+            )
         }
     }
 

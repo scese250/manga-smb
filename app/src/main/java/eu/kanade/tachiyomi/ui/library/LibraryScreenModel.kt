@@ -407,7 +407,10 @@ class LibraryScreenModel(
                         } else {
                             0
                         },
-                        unreadCount = if (preferences.unreadBadge) {
+                        // SMB mangas use page-level progress badge, not chapter count
+                        unreadCount = if (manga.manga.source == eu.kanade.tachiyomi.data.smb.SmbSource.ID) {
+                            0
+                        } else if (preferences.unreadBadge) {
                             manga.unreadCount
                         } else {
                             0

@@ -27,11 +27,15 @@ import dev.icerock.moko.resources.StringResource
 import eu.kanade.presentation.more.settings.Preference
 import eu.kanade.tachiyomi.data.smb.SmbClientWrapper
 import eu.kanade.tachiyomi.data.smb.SmbPreferences
+import eu.kanade.tachiyomi.data.smb.SmbSyncManager
+import eu.kanade.tachiyomi.data.smb.SyncState
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.util.collectAsState
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import androidx.compose.runtime.collectAsState as collectStateFlow
 
 object SettingsSmbScreen : SearchableSettings {
 
@@ -156,25 +160,35 @@ object SettingsSmbScreen : SearchableSettings {
                             
                             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                             
-                            var isSyncing by remember { mutableStateOf(false) }
+                            val syncState by SmbSyncManager.stateFlow.collectStateFlow()
+                            val isSyncing = syncState is SyncState.Syncing
                             Button(
                                 onClick = {
                                     scope.launch {
-                                        isSyncing = true
                                         eu.kanade.tachiyomi.data.smb.SmbSyncManager().syncLibrary()
-                                        isSyncing = false
                                     }
                                 },
                                 enabled = !isSyncing && enabledFolders.isNotEmpty(),
                             ) {
                                 Text(if (isSyncing) "Sincronizando..." else "Sincronizar Biblioteca SMB")
                             }
-                            if (isSyncing) {
-                                Text(
-                                    text = "Esto puede tardar un momento. Los mangas aparecerán en la pestaña Biblioteca.",
+                            when (val state = syncState) {
+                                is SyncState.Syncing -> Text(
+                                    text = "Sincronizando mangas...",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.primary,
                                 )
+                                is SyncState.Done -> Text(
+                                    text = "Listo. ${state.mangaCount} mangas sincronizados.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                                is SyncState.Error -> Text(
+                                    text = "Error: ${state.message}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error,
+                                )
+                                else -> Unit
                             }
                         }
                     },

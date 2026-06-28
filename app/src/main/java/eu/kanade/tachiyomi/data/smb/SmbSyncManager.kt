@@ -1,11 +1,11 @@
 package eu.kanade.tachiyomi.data.smb
 
 import android.app.Application
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import tachiyomi.core.common.util.system.logcat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import logcat.LogPriority
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.category.repository.CategoryRepository
@@ -19,6 +19,13 @@ import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.File
 
+sealed class SyncState {
+    object Idle : SyncState()
+    object Syncing : SyncState()
+    data class Done(val mangaCount: Int) : SyncState()
+    data class Error(val message: String) : SyncState()
+}
+
 class SmbSyncManager(
     private val application: Application = Injekt.get(),
     private val smbPreferences: SmbPreferences = Injekt.get(),
@@ -27,9 +34,15 @@ class SmbSyncManager(
     private val categoryRepository: CategoryRepository = Injekt.get(),
     private val chapterRepository: ChapterRepository = Injekt.get(),
 ) {
+    companion object {
+        private val _stateFlow = MutableStateFlow<SyncState>(SyncState.Idle)
+        val stateFlow: StateFlow<SyncState> = _stateFlow
+    }
 
     suspend fun syncLibrary() = withContext(Dispatchers.IO) {
+        _stateFlow.value = SyncState.Syncing
         try {
+            var mangaCount = 0
             val enabledFolders = smbPreferences.enabledFolders.get()
             if (enabledFolders.isEmpty()) return@withContext
 
@@ -63,6 +76,7 @@ class SmbSyncManager(
 
                 // 2. Scan mangas in this folder with modification date
                 val mangaFoldersWithDate = smbClient.listFoldersWithDate(folder)
+                mangaCount += mangaFoldersWithDate.size
 
                 for ((mangaName, folderModifiedAt) in mangaFoldersWithDate) {
                     val mangaPath = "$folder\\$mangaName"
@@ -131,8 +145,11 @@ class SmbSyncManager(
                     }
                 }
             }
+            _stateFlow.value = SyncState.Done(mangaCount)
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "SMB Sync failed" }
+            _stateFlow.value = SyncState.Error(e.message ?: "Error desconocido")
+            return@withContext
         }
     }
 }
