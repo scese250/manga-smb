@@ -59,7 +59,12 @@ internal fun LanguageBadge(
 
 @Composable
 internal fun EnglishBadge(title: String) {
-    if (title.contains("[English]", ignoreCase = true) || title.contains("[Eng]", ignoreCase = true)) {
+    if (
+        title.contains("[English]", ignoreCase = true) ||
+        title.contains("[Eng]", ignoreCase = true) ||
+        title.contains("(English)", ignoreCase = true) ||
+        title.contains("(Eng)", ignoreCase = true)
+    ) {
         val neonGreen = Color(0xFF39FF14)
         Text(
             text = "English",

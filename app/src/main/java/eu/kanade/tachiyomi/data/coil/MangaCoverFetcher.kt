@@ -310,7 +310,7 @@ class MangaCoverFetcher(
     private fun compressCoverToWebP(bytes: ByteArray): ByteArray? {
         return try {
             val original = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
-            val maxWidth = 300
+            val maxWidth = 600
             val scaled = if (original.width > maxWidth) {
                 val ratio = maxWidth.toFloat() / original.width
                 val newHeight = (original.height * ratio).toInt()
@@ -325,7 +325,7 @@ class MangaCoverFetcher(
                 Bitmap.CompressFormat.WEBP
             }
             java.io.ByteArrayOutputStream().use { out ->
-                scaled.compress(format, 75, out)
+                scaled.compress(format, 85, out)
                 scaled.recycle()
                 out.toByteArray()
             }

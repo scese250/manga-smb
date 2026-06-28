@@ -46,7 +46,7 @@ enum class MangaCover(val ratio: Float) {
                         Modifier
                     },
                 ),
-            contentScale = ContentScale.Crop,
+            contentScale = ContentScale.Fit,
         )
     }
 }
