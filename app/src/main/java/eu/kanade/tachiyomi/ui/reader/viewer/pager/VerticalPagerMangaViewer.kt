@@ -8,7 +8,7 @@ import eu.kanade.tachiyomi.ui.reader.ReaderActivity
  */
 class VerticalPagerMangaViewer(activity: ReaderActivity) : PagerViewer(activity) {
 
-    var currentScale: Float = -1f
+    var currentRelativeScale: Float = 1f
 
     /**
      * Creates a new vertical pager.

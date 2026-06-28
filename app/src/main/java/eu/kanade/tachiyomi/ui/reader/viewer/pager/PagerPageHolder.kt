@@ -265,9 +265,11 @@ class PagerPageHolder(
         if (viewer is VerticalPagerMangaViewer) {
             val view = scaleImageView ?: return
             if (!view.isReady) return
-            val savedScale = viewer.currentScale
-            if (savedScale > 1f) {
-                view.setScaleAndCenter(savedScale, android.graphics.PointF(view.sWidth.toFloat(), 0f))
+            val savedRelativeScale = viewer.currentRelativeScale
+            if (savedRelativeScale > 1.05f) {
+                view.setScaleAndCenter(view.minScale * savedRelativeScale, android.graphics.PointF(view.sWidth.toFloat(), 0f))
+            } else {
+                view.setScaleAndCenter(view.minScale, android.graphics.PointF(view.sWidth / 2f, view.sHeight / 2f))
             }
         }
     }
@@ -287,7 +289,10 @@ class PagerPageHolder(
         super.onScaleChanged(newScale)
         viewer.activity.hideMenu()
         if (viewer is VerticalPagerMangaViewer) {
-            viewer.currentScale = newScale
+            val view = scaleImageView ?: return
+            if (view.isReady && view.minScale > 0f) {
+                viewer.currentRelativeScale = newScale / view.minScale
+            }
         }
     }
 
