@@ -1,5 +1,7 @@
 package eu.kanade.tachiyomi.data.coil
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import androidx.core.net.toUri
 import coil3.Extras
 import coil3.ImageLoader
@@ -32,8 +34,12 @@ import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaCover
 import tachiyomi.domain.source.service.SourceManager
 import uy.kohesive.injekt.injectLazy
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 import java.io.File
 import java.io.IOException
+import eu.kanade.tachiyomi.data.smb.SmbClientWrapper
+import eu.kanade.tachiyomi.data.smb.SmbPreferences
 
 /**
  * A [Fetcher] that fetches cover image for [Manga] object.
@@ -76,6 +82,7 @@ class MangaCoverFetcher(
             Type.File -> fileLoader(File(url.substringAfter("file://")))
             Type.URI -> fileUriLoader(url)
             Type.URL -> httpLoader()
+            Type.SMB -> smbLoader()
             null -> error("Invalid image")
         }
     }
@@ -284,6 +291,7 @@ class MangaCoverFetcher(
     private fun getResourceType(cover: String?): Type? {
         return when {
             cover.isNullOrEmpty() -> null
+            cover.startsWith("smb://", true) -> Type.SMB
             cover.startsWith("http", true) || cover.startsWith("Custom-", true) -> Type.URL
             cover.startsWith("/") || cover.startsWith("file://") -> Type.File
             cover.startsWith("content") -> Type.URI
@@ -295,6 +303,92 @@ class MangaCoverFetcher(
         File,
         URI,
         URL,
+        SMB
+    }
+
+    @Suppress("DEPRECATION")
+    private fun compressCoverToWebP(bytes: ByteArray): ByteArray? {
+        return try {
+            val original = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
+            val maxWidth = 300
+            val scaled = if (original.width > maxWidth) {
+                val ratio = maxWidth.toFloat() / original.width
+                val newHeight = (original.height * ratio).toInt()
+                Bitmap.createScaledBitmap(original, maxWidth, newHeight, true)
+                    .also { if (it !== original) original.recycle() }
+            } else {
+                original
+            }
+            val format = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                Bitmap.CompressFormat.WEBP_LOSSY
+            } else {
+                Bitmap.CompressFormat.WEBP
+            }
+            java.io.ByteArrayOutputStream().use { out ->
+                scaled.compress(format, 75, out)
+                scaled.recycle()
+                out.toByteArray()
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private suspend fun smbLoader(): FetchResult {
+        val libraryCoverCacheFile = if (isLibraryManga) {
+            coverFileLazy.value ?: error("No cover specified")
+        } else {
+            null
+        }
+        if (libraryCoverCacheFile?.exists() == true && options.diskCachePolicy.readEnabled) {
+            return fileLoader(libraryCoverCacheFile)
+        }
+
+        var snapshot = readFromDiskCache()
+        if (snapshot != null) {
+            val snapshotCoverCache = moveSnapshotToCoverCache(snapshot, libraryCoverCacheFile)
+            if (snapshotCoverCache != null) {
+                return fileLoader(snapshotCoverCache)
+            }
+            return SourceFetchResult(
+                source = snapshot.toImageSource(),
+                mimeType = "image/*",
+                dataSource = DataSource.DISK,
+            )
+        }
+
+        // Fetch from SMB
+        val smbPreferences: SmbPreferences = Injekt.get()
+        val smbClient = SmbClientWrapper(smbPreferences)
+        val mangaPath = url!!.substringAfter("smb://")
+        
+        return try {
+            val images = smbClient.listImageFiles(mangaPath)
+            if (images.isEmpty()) error("No images found in $mangaPath")
+            
+            val firstImage = images.first()
+            val imagePath = "$mangaPath\\$firstImage"
+            val bytes = smbClient.getFileBytes(imagePath) ?: error("Failed to read $imagePath")
+            
+            val compressed = compressCoverToWebP(bytes) ?: bytes
+            
+            // Write directly to cache
+            if (libraryCoverCacheFile != null && options.diskCachePolicy.writeEnabled) {
+                libraryCoverCacheFile.parentFile?.mkdirs()
+                libraryCoverCacheFile.delete()
+                libraryCoverCacheFile.writeBytes(compressed)
+                fileLoader(libraryCoverCacheFile)
+            } else {
+                val source = okio.Buffer().write(compressed)
+                SourceFetchResult(
+                    source = ImageSource(source = source, fileSystem = FileSystem.SYSTEM),
+                    mimeType = "image/*",
+                    dataSource = DataSource.NETWORK,
+                )
+            }
+        } finally {
+            smbClient.disconnect()
+        }
     }
 
     class MangaFactory(

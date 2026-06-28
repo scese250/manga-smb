@@ -7,6 +7,9 @@ import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.util.lang.compareToCaseInsensitiveNaturalOrder
 import tachiyomi.core.common.util.system.ImageUtil
+import tachiyomi.domain.chapter.repository.ChapterRepository
+import tachiyomi.domain.chapter.model.toChapterUpdate
+import uy.kohesive.injekt.injectLazy
 
 /**
  * Loader used to load a chapter from an SMB share.
@@ -18,6 +21,7 @@ internal class SmbPageLoader(
 
     override var isLocal: Boolean = true
     private var smbClient: SmbClientWrapper? = null
+    private val chapterRepository: ChapterRepository by injectLazy()
 
     override suspend fun getPages(): List<ReaderPage> {
         if (smbClient == null) {
@@ -26,6 +30,16 @@ internal class SmbPageLoader(
         
         val chapterUrl = chapter.chapter.url // This is the SMB path to the folder
         val images = smbClient?.listImageFiles(chapterUrl) ?: emptyList()
+        
+        // Update chapter scanlator with image count dynamically if needed
+        val imageCountStr = images.size.toString()
+        if (images.isNotEmpty() && chapter.chapter.scanlator != imageCountStr) {
+            val dbChapter = chapterRepository.getChapterById(chapter.chapter.id)
+            if (dbChapter != null) {
+                chapterRepository.update(dbChapter.toChapterUpdate().copy(scanlator = imageCountStr))
+                chapter.chapter = chapter.chapter.copy(scanlator = imageCountStr)
+            }
+        }
         
         return images
             .mapIndexed { i, fileName ->

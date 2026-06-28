@@ -33,8 +33,9 @@ class SmbSyncManager(
             val enabledFolders = smbPreferences.enabledFolders.get()
             if (enabledFolders.isEmpty()) return@withContext
 
+            // Delete old smb_covers folder if it exists (migration to dynamic coil cache)
             val coversDir = File(application.filesDir, "smb_covers")
-            if (!coversDir.exists()) coversDir.mkdirs()
+            if (coversDir.exists()) coversDir.deleteRecursively()
 
             // Get existing categories to avoid duplicates
             val dbCategories = categoryRepository.getAll()
@@ -70,33 +71,8 @@ class SmbSyncManager(
 
                     // 3. Ensure manga exists
                     var dbManga = mangaRepository.getMangaByUrlAndSourceId(mangaPath, smbSourceId)
-                    var coverPath: String? = null
-
-                    // 4. Download and compress cover to WebP
-                    val coverFile = File(coversDir, "${mangaPath.hashCode()}.webp")
-                    // Remove old .jpg cover if it exists (migration)
-                    File(coversDir, "${mangaPath.hashCode()}.jpg").also { if (it.exists()) it.delete() }
-                    if (!coverFile.exists()) {
-                        try {
-                            val images = smbClient.listImageFiles(mangaPath)
-                            if (images.isNotEmpty()) {
-                                val firstImage = images.first()
-                                val imagePath = "$mangaPath\\$firstImage"
-                                val bytes = smbClient.getFileBytes(imagePath)
-                                if (bytes != null) {
-                                    val compressed = compressCoverToWebP(bytes)
-                                    if (compressed != null) {
-                                        coverFile.writeBytes(compressed)
-                                    }
-                                }
-                            }
-                        } catch (e: Exception) {
-                            logcat(LogPriority.ERROR, e) { "Failed to get cover for $mangaName" }
-                        }
-                    }
-                    if (coverFile.exists()) {
-                        coverPath = coverFile.absolutePath
-                    }
+                    // 4. Set thumbnail URL to SMB path for dynamic loading
+                    val coverPath = "smb://$mangaPath"
 
                     if (dbManga == null) {
                         val newManga = Manga.create().copy(
@@ -140,12 +116,8 @@ class SmbSyncManager(
                         mangaRepository.setMangaCategories(dbManga.id, newCategoryList)
                     }
 
-                    // 6. Ensure dummy chapter exists with image count in scanlator
-                    val imageCount = try {
-                        smbClient.listImageFiles(mangaPath).size.toLong()
-                    } catch (e: Exception) {
-                        0L
-                    }
+                    // 6. Ensure dummy chapter exists
+                    // Image count (scanlator) will be populated dynamically when the chapter is loaded
                     val dbChapter = chapterRepository.getChapterByUrlAndMangaId(mangaPath, dbManga.id)
                     if (dbChapter == null) {
                         val newChapter = Chapter.create().copy(
@@ -154,52 +126,13 @@ class SmbSyncManager(
                             name = mangaName,
                             chapterNumber = 1.0,
                             dateUpload = System.currentTimeMillis(),
-                            scanlator = if (imageCount > 0) "$imageCount" else null,
                         )
                         chapterRepository.addAll(listOf(newChapter))
-                    } else if (imageCount > 0 && dbChapter.scanlator != "$imageCount") {
-                        // Update total page count if it changed
-                        chapterRepository.update(
-                            dbChapter.toChapterUpdate().copy(scanlator = "$imageCount")
-                        )
                     }
                 }
             }
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "SMB Sync failed" }
-        }
-    }
-
-    /**
-     * Decodes raw image bytes, scales to a max width of 300px maintaining aspect ratio,
-     * and compresses to WebP at 75% quality.
-     * Returns null if decoding fails.
-     */
-    @Suppress("DEPRECATION")
-    private fun compressCoverToWebP(bytes: ByteArray): ByteArray? {
-        return try {
-            val original = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
-            val maxWidth = 300
-            val scaled = if (original.width > maxWidth) {
-                val ratio = maxWidth.toFloat() / original.width
-                val newHeight = (original.height * ratio).toInt()
-                Bitmap.createScaledBitmap(original, maxWidth, newHeight, true)
-                    .also { if (it !== original) original.recycle() }
-            } else {
-                original
-            }
-            val format = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-                Bitmap.CompressFormat.WEBP_LOSSY
-            } else {
-                Bitmap.CompressFormat.WEBP
-            }
-            java.io.ByteArrayOutputStream().use { out ->
-                scaled.compress(format, 75, out)
-                scaled.recycle()
-                out.toByteArray()
-            }
-        } catch (e: Exception) {
-            null
         }
     }
 }
