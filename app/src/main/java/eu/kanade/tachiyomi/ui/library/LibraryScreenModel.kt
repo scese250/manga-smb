@@ -390,8 +390,10 @@ class LibraryScreenModel(
                 val (smbReadCount, smbTotalPages) = if (manga.manga.source == eu.kanade.tachiyomi.data.smb.SmbSource.ID) {
                     val chapter = getChaptersByMangaId.await(manga.id).firstOrNull()
                     val lastPage = chapter?.lastPageRead ?: 0L
+                    // lastPageRead is 0-indexed; +1 for 1-based display, but 0 stays 0 (hidden)
+                    val displayPage = if (lastPage > 0L) lastPage + 1L else 0L
                     val totalPages = chapter?.scanlator?.toLongOrNull() ?: 0L
-                    Pair(lastPage, totalPages)
+                    Pair(displayPage, totalPages)
                 } else {
                     Pair(manga.readCount, manga.totalChapters)
                 }
