@@ -1,6 +1,8 @@
 package eu.kanade.tachiyomi.data.smb
 
 import android.app.Application
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import tachiyomi.core.common.util.system.logcat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -70,8 +72,10 @@ class SmbSyncManager(
                     var dbManga = mangaRepository.getMangaByUrlAndSourceId(mangaPath, smbSourceId)
                     var coverPath: String? = null
 
-                    // 4. Download cover
-                    val coverFile = File(coversDir, "${mangaPath.hashCode()}.jpg")
+                    // 4. Download and compress cover to WebP
+                    val coverFile = File(coversDir, "${mangaPath.hashCode()}.webp")
+                    // Remove old .jpg cover if it exists (migration)
+                    File(coversDir, "${mangaPath.hashCode()}.jpg").also { if (it.exists()) it.delete() }
                     if (!coverFile.exists()) {
                         try {
                             val images = smbClient.listImageFiles(mangaPath)
@@ -80,7 +84,10 @@ class SmbSyncManager(
                                 val imagePath = "$mangaPath\\$firstImage"
                                 val bytes = smbClient.getFileBytes(imagePath)
                                 if (bytes != null) {
-                                    coverFile.writeBytes(bytes)
+                                    val compressed = compressCoverToWebP(bytes)
+                                    if (compressed != null) {
+                                        coverFile.writeBytes(compressed)
+                                    }
                                 }
                             }
                         } catch (e: Exception) {
@@ -160,6 +167,39 @@ class SmbSyncManager(
             }
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "SMB Sync failed" }
+        }
+    }
+
+    /**
+     * Decodes raw image bytes, scales to a max width of 300px maintaining aspect ratio,
+     * and compresses to WebP at 75% quality.
+     * Returns null if decoding fails.
+     */
+    @Suppress("DEPRECATION")
+    private fun compressCoverToWebP(bytes: ByteArray): ByteArray? {
+        return try {
+            val original = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
+            val maxWidth = 300
+            val scaled = if (original.width > maxWidth) {
+                val ratio = maxWidth.toFloat() / original.width
+                val newHeight = (original.height * ratio).toInt()
+                Bitmap.createScaledBitmap(original, maxWidth, newHeight, true)
+                    .also { if (it !== original) original.recycle() }
+            } else {
+                original
+            }
+            val format = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                Bitmap.CompressFormat.WEBP_LOSSY
+            } else {
+                Bitmap.CompressFormat.WEBP
+            }
+            java.io.ByteArrayOutputStream().use { out ->
+                scaled.compress(format, 75, out)
+                scaled.recycle()
+                out.toByteArray()
+            }
+        } catch (e: Exception) {
+            null
         }
     }
 }
