@@ -12,6 +12,11 @@ import com.hierynomus.smbj.connection.Connection
 import com.hierynomus.smbj.session.Session
 import com.hierynomus.smbj.share.DiskShare
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -28,6 +33,10 @@ class SmbClientWrapper(
     private var connection: Connection? = null
     private var session: Session? = null
     private var share: DiskShare? = null
+    private var keepAliveJob: Job? = null
+
+    // Intervalo del keep-alive en milisegundos (cada 45 segundos)
+    private val keepAliveIntervalMs = 45_000L
 
     private val imageExtensions = setOf("jpg", "jpeg", "png", "gif", "webp", "bmp", "avif")
 
@@ -67,6 +76,8 @@ class SmbClientWrapper(
         connection = newConnection
         session = newSession
         share = newShare
+
+        startKeepAliveInternal()
 
         newShare
     }
@@ -244,7 +255,25 @@ class SmbClientWrapper(
     }
 
     suspend fun disconnect() = mutex.withLock {
+        keepAliveJob?.cancel()
+        keepAliveJob = null
         disconnectInternal()
+    }
+
+    // Inicia el keep-alive dentro del lock (ya se llama desde ensureConnected que tiene el lock)
+    private fun startKeepAliveInternal() {
+        keepAliveJob?.cancel()
+        keepAliveJob = GlobalScope.launch(Dispatchers.IO) {
+            while (isActive) {
+                delay(keepAliveIntervalMs)
+                try {
+                    // Ping liviano: listar la raiz del share
+                    share?.list("")
+                } catch (_: Exception) {
+                    // Si falla, la proxima operacion real re-conectara automaticamente
+                }
+            }
+        }
     }
 
     private suspend fun resetConnection(failedShare: DiskShare?) = mutex.withLock {
