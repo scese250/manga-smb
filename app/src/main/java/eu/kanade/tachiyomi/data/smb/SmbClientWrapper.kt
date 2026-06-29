@@ -32,11 +32,7 @@ class SmbClientWrapper(
     private val imageExtensions = setOf("jpg", "jpeg", "png", "gif", "webp", "bmp", "avif")
 
     private fun buildConfig(): SmbConfig {
-        return SmbConfig.builder()
-            .withTimeout(15, TimeUnit.SECONDS)
-            .withReadTimeout(15, TimeUnit.SECONDS)
-            .withWriteTimeout(15, TimeUnit.SECONDS)
-            .build()
+        return SmbConfig.builder().build()
     }
 
     /**
