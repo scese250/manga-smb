@@ -233,6 +233,8 @@ data object LibraryTab : Tab {
                                             context.startActivity(
                                                 ReaderActivity.newIntent(context, chapter.mangaId, chapter.id),
                                             )
+                                        } else {
+                                            navigator.push(MangaScreen(mangaId))
                                         }
                                     } else {
                                         navigator.push(MangaScreen(mangaId))
