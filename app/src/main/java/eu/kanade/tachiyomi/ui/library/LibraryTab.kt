@@ -228,7 +228,10 @@ data object LibraryTab : Tab {
                                 scope.launchIO {
                                     val manga = screenModel.getManga(mangaId)
                                     if (manga != null && manga.source == eu.kanade.tachiyomi.data.smb.SmbSource.ID) {
-                                        val chapter = screenModel.getNextUnreadChapter(manga)
+                                        var chapter = screenModel.getNextUnreadChapter(manga)
+                                        if (chapter == null) {
+                                            chapter = screenModel.getLastChapter(manga)
+                                        }
                                         if (chapter != null) {
                                             context.startActivity(
                                                 ReaderActivity.newIntent(context, chapter.mangaId, chapter.id),

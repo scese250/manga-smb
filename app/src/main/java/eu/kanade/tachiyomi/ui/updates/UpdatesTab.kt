@@ -62,7 +62,10 @@ data object UpdatesTab : Tab {
             state = state,
             snackbarHostState = screenModel.snackbarHostState,
             lastUpdated = screenModel.lastUpdated,
-            onClickCover = { item -> navigator.push(MangaScreen(item.update.mangaId)) },
+            onClickCover = { item ->
+                val intent = ReaderActivity.newIntent(context, item.update.mangaId, item.update.chapterId)
+                context.startActivity(intent)
+            },
             onSelectAll = screenModel::toggleAllSelection,
             onInvertSelection = screenModel::invertSelection,
             onUpdateLibrary = screenModel::updateLibrary,

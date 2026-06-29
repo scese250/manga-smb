@@ -469,6 +469,11 @@ class LibraryScreenModel(
         return getChaptersByMangaId.await(manga.id, applyScanlatorFilter = true).getNextUnread(manga, downloadManager)
     }
 
+    suspend fun getLastChapter(manga: Manga): Chapter? {
+        val chapters = getChaptersByMangaId.await(manga.id, applyScanlatorFilter = true)
+        return chapters.firstOrNull()
+    }
+
     suspend fun getManga(mangaId: Long): Manga? {
         return getMangaById.await(mangaId)
     }
