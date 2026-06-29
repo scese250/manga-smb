@@ -96,6 +96,11 @@ object SettingsSmbScreen : SearchableSettings {
                         title = "Nombre del recurso compartido",
                         subtitle = smbPreferences.smbShareName.get().ifBlank { "El nombre del share en Windows, ej: Exhentai" },
                     ),
+                    Preference.PreferenceItem.SwitchPreference(
+                        preference = smbPreferences.prefetchEnabled,
+                        title = "Descarga en segundo plano (Prefetch)",
+                        subtitle = "Descarga los capítulos completos al caché temporal para evitar cortes y pantallas de carga mientras lees.",
+                    ),
                 ),
             ),
             Preference.PreferenceGroup(

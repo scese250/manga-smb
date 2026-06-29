@@ -64,66 +64,85 @@ internal class SmbPageLoader(
             }
         }
         
-        val cacheDir = File(context.cacheDir, "smb_images_cache/${chapter.chapter.id ?: chapter.chapter.url.hashCode()}")
-        cacheDir.mkdirs()
-        chapterCacheDir = cacheDir
+        val prefetchEnabled = smbPreferences.prefetchEnabled.get()
         
-        val mutexes = Array(images.size) { Mutex() }
-        
-        val pages = images.mapIndexed { i, fileName ->
-            val fullPath = "$chapterUrl\\$fileName"
-            val localFile = File(cacheDir, fileName)
-            val tmpFile = File(cacheDir, "$fileName.tmp")
+        if (prefetchEnabled) {
+            val cacheDir = File(context.cacheDir, "smb_images_cache/${chapter.chapter.id ?: chapter.chapter.url.hashCode()}")
+            cacheDir.mkdirs()
+            chapterCacheDir = cacheDir
             
-            val streamFn = { 
-                kotlinx.coroutines.runBlocking {
-                    mutexes[i].withLock {
-                        if (!localFile.exists() || localFile.length() == 0L) {
-                            smbClient.getFileInputStream(fullPath)?.use { input ->
-                                tmpFile.outputStream().use { output ->
-                                    input.copyTo(output)
+            val mutexes = Array(images.size) { Mutex() }
+            
+            val pages = images.mapIndexed { i, fileName ->
+                val fullPath = "$chapterUrl\\$fileName"
+                val localFile = File(cacheDir, fileName)
+                val tmpFile = File(cacheDir, "$fileName.tmp")
+                
+                val streamFn = { 
+                    kotlinx.coroutines.runBlocking {
+                        mutexes[i].withLock {
+                            if (!localFile.exists() || localFile.length() == 0L) {
+                                smbClient.getFileInputStream(fullPath)?.use { input ->
+                                    tmpFile.outputStream().use { output ->
+                                        input.copyTo(output)
+                                    }
                                 }
+                                tmpFile.renameTo(localFile)
                             }
-                            tmpFile.renameTo(localFile)
+                        }
+                        if (localFile.exists() && localFile.length() > 0L) {
+                            localFile.inputStream()
+                        } else {
+                            throw Exception("Could not download file")
                         }
                     }
-                    if (localFile.exists() && localFile.length() > 0L) {
-                        localFile.inputStream()
-                    } else {
-                        throw Exception("Could not download file")
+                }
+                ReaderPage(i).apply {
+                    stream = streamFn
+                    status = Page.State.Ready
+                }
+            }
+
+            prefetchJob = GlobalScope.launch(Dispatchers.IO) {
+                for (i in images.indices) {
+                    val fullPath = "$chapterUrl\\${images[i]}"
+                    val localFile = File(cacheDir, images[i])
+                    val tmpFile = File(cacheDir, "${images[i]}.tmp")
+
+                    try {
+                        mutexes[i].withLock {
+                            if (!localFile.exists() || localFile.length() == 0L) {
+                                smbClient.getFileInputStream(fullPath)?.use { input ->
+                                    tmpFile.outputStream().use { output ->
+                                        input.copyTo(output)
+                                    }
+                                }
+                                tmpFile.renameTo(localFile)
+                            }
+                        }
+                    } catch (e: Exception) {
+                        // Ignore errors in prefetch, the reader will retry if the user reaches this page
                     }
                 }
             }
-            ReaderPage(i).apply {
-                stream = streamFn
-                status = Page.State.Ready
-            }
-        }
 
-        prefetchJob = GlobalScope.launch(Dispatchers.IO) {
-            for (i in images.indices) {
-                val fullPath = "$chapterUrl\\${images[i]}"
-                val localFile = File(cacheDir, images[i])
-                val tmpFile = File(cacheDir, "${images[i]}.tmp")
-
-                try {
-                    mutexes[i].withLock {
-                        if (!localFile.exists() || localFile.length() == 0L) {
-                            smbClient.getFileInputStream(fullPath)?.use { input ->
-                                tmpFile.outputStream().use { output ->
-                                    input.copyTo(output)
-                                }
-                            }
-                            tmpFile.renameTo(localFile)
-                        }
+            return pages
+        } else {
+            val pages = images.mapIndexed { i, fileName ->
+                val fullPath = "$chapterUrl\\$fileName"
+                
+                val streamFn = { 
+                    kotlinx.coroutines.runBlocking {
+                        smbClient.getFileInputStream(fullPath) ?: throw Exception("Could not open file")
                     }
-                } catch (e: Exception) {
-                    // Ignore errors in prefetch, the reader will retry if the user reaches this page
+                }
+                ReaderPage(i).apply {
+                    stream = streamFn
+                    status = Page.State.Ready
                 }
             }
+            return pages
         }
-
-        return pages
     }
 
     override fun retryPage(page: ReaderPage) {

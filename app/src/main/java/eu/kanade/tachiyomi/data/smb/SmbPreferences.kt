@@ -16,6 +16,8 @@ class SmbPreferences(
     val smbShareName: Preference<String> = preferenceStore.getString("smb_share_name", "")
 
     val enabledFolders: Preference<Set<String>> = preferenceStore.getStringSet("smb_enabled_folders", emptySet())
+    
+    val prefetchEnabled: Preference<Boolean> = preferenceStore.getBoolean("smb_prefetch_enabled", true)
 
     fun isConfigured(): Boolean {
         return smbHost.get().isNotBlank() &&

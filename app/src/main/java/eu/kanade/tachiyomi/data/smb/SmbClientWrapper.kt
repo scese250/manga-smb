@@ -32,30 +32,16 @@ class SmbClientWrapper(
     private val imageExtensions = setOf("jpg", "jpeg", "png", "gif", "webp", "bmp", "avif")
 
     private fun buildConfig(): SmbConfig {
-        return SmbConfig.builder()
-            .withTimeout(15, TimeUnit.SECONDS)
-            .withReadTimeout(30, TimeUnit.SECONDS)
-            .withWriteTimeout(30, TimeUnit.SECONDS)
-            .withSoTimeout(15, TimeUnit.SECONDS)
-            .build()
+        return SmbConfig.builder().build()
     }
 
     /**
-     * Devuelve la conexion activa. Antes de reutilizarla, la prueba con un list("")
-     * para verificar que el servidor no la haya cerrado por inactividad.
-     * Si la prueba falla, reconecta limpiamente.
+     * Devuelve la conexion activa, verificando isConnected para saber si se cerro.
      */
     private suspend fun ensureConnected(): DiskShare = mutex.withLock {
         val currentShare = share
-        if (currentShare != null && currentShare.isConnected) {
-            // Probar activamente si la conexion sigue viva
-            val alive = try {
-                currentShare.list("")
-                true
-            } catch (_: Exception) {
-                false
-            }
-            if (alive) return@withLock currentShare
+        if (currentShare != null && connection?.isConnected == true) {
+            return@withLock currentShare
         }
 
         // Reconectar
@@ -128,7 +114,7 @@ class SmbClientWrapper(
             }
         } catch (e: Exception) {
             resetConnection(diskShare)
-            emptyList()
+            throw e
         }
     }
 
@@ -179,7 +165,7 @@ class SmbClientWrapper(
             }
         } catch (e: Exception) {
             resetConnection(diskShare)
-            emptyList()
+            throw e
         }
     }
 
@@ -210,7 +196,7 @@ class SmbClientWrapper(
             }
         } catch (e: Exception) {
             resetConnection(diskShare)
-            emptyList()
+            throw e
         }
     }
 
@@ -243,7 +229,7 @@ class SmbClientWrapper(
             }
         } catch (e: Exception) {
             resetConnection(diskShare)
-            null
+            throw e
         }
     }
 
