@@ -13,6 +13,12 @@ import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.injectLazy
 import android.app.Application
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.io.File
 import java.util.zip.ZipFile
 
@@ -31,6 +37,9 @@ internal class SmbPageLoader(
     
     private var localZipFile: File? = null
     private var zipArchive: ZipFile? = null
+    
+    private var prefetchJob: Job? = null
+    private var chapterCacheDir: File? = null
 
     override suspend fun getPages(): List<ReaderPage> {
         val chapterUrl = chapter.chapter.url // This is the SMB path to the folder
@@ -55,23 +64,66 @@ internal class SmbPageLoader(
             }
         }
         
-        return images
-            .mapIndexed { i, fileName ->
-                val fullPath = "$chapterUrl\\$fileName"
-                val streamFn = { 
-                    // We must create a new client or use the existing one to open stream.
-                    // Returning an InputStream directly allows ReaderPage to read the bytes.
-                    // runBlocking because getFileInputStream is a suspend function
-                    kotlinx.coroutines.runBlocking {
-                        smbClient.getFileInputStream(fullPath)
-                            ?: throw Exception("Could not open file")
+        val cacheDir = File(context.cacheDir, "smb_images_cache/${chapter.chapter.id ?: chapter.chapter.url.hashCode()}")
+        cacheDir.mkdirs()
+        chapterCacheDir = cacheDir
+        
+        val mutexes = Array(images.size) { Mutex() }
+        
+        val pages = images.mapIndexed { i, fileName ->
+            val fullPath = "$chapterUrl\\$fileName"
+            val localFile = File(cacheDir, fileName)
+            val tmpFile = File(cacheDir, "$fileName.tmp")
+            
+            val streamFn = { 
+                kotlinx.coroutines.runBlocking {
+                    mutexes[i].withLock {
+                        if (!localFile.exists() || localFile.length() == 0L) {
+                            smbClient.getFileInputStream(fullPath)?.use { input ->
+                                tmpFile.outputStream().use { output ->
+                                    input.copyTo(output)
+                                }
+                            }
+                            tmpFile.renameTo(localFile)
+                        }
+                    }
+                    if (localFile.exists() && localFile.length() > 0L) {
+                        localFile.inputStream()
+                    } else {
+                        throw Exception("Could not download file")
                     }
                 }
-                ReaderPage(i).apply {
-                    stream = streamFn
-                    status = Page.State.Ready
+            }
+            ReaderPage(i).apply {
+                stream = streamFn
+                status = Page.State.Ready
+            }
+        }
+
+        prefetchJob = GlobalScope.launch(Dispatchers.IO) {
+            for (i in images.indices) {
+                val fullPath = "$chapterUrl\\${images[i]}"
+                val localFile = File(cacheDir, images[i])
+                val tmpFile = File(cacheDir, "${images[i]}.tmp")
+
+                try {
+                    mutexes[i].withLock {
+                        if (!localFile.exists() || localFile.length() == 0L) {
+                            smbClient.getFileInputStream(fullPath)?.use { input ->
+                                tmpFile.outputStream().use { output ->
+                                    input.copyTo(output)
+                                }
+                            }
+                            tmpFile.renameTo(localFile)
+                        }
+                    }
+                } catch (e: Exception) {
+                    // Ignore errors in prefetch, the reader will retry if the user reaches this page
                 }
             }
+        }
+
+        return pages
     }
 
     override fun retryPage(page: ReaderPage) {
@@ -81,6 +133,8 @@ internal class SmbPageLoader(
 
     override fun recycle() {
         super.recycle()
+        prefetchJob?.cancel()
+        try { chapterCacheDir?.deleteRecursively() } catch (e: Exception) {}
         try { zipArchive?.close() } catch (e: Exception) {}
         zipArchive = null
         try { localZipFile?.delete() } catch (e: Exception) {}
