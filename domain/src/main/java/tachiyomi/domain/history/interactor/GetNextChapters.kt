@@ -49,8 +49,10 @@ class GetNextChapters(
         val fromChapter = chapters.getOrNull(currChapterIndex)
         return if (fromChapter != null && !fromChapter.read) {
             nextChapters
-        } else {
+        } else if (nextChapters.size > 1) {
             nextChapters.drop(1)
+        } else {
+            nextChapters
         }
     }
 }

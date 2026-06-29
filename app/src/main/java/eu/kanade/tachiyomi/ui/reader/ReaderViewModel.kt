@@ -237,7 +237,7 @@ class ReaderViewModel @JvmOverloads constructor(
                 if (chapterPageIndex >= 0) {
                     // Restore from SavedState
                     currentChapter.requestedPage = chapterPageIndex
-                } else if (!currentChapter.chapter.read) {
+                } else {
                     currentChapter.requestedPage = currentChapter.chapter.last_page_read
                 }
                 chapterId = currentChapter.chapter.id!!
