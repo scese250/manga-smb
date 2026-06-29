@@ -8,8 +8,12 @@ import com.hierynomus.mssmb2.SMB2ShareAccess
 import com.hierynomus.smbj.SMBClient
 import com.hierynomus.smbj.SmbConfig
 import com.hierynomus.smbj.auth.AuthenticationContext
+import com.hierynomus.smbj.connection.Connection
+import com.hierynomus.smbj.session.Session
 import com.hierynomus.smbj.share.DiskShare
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.InputStream
 import java.util.EnumSet
@@ -18,6 +22,12 @@ import java.util.concurrent.TimeUnit
 class SmbClientWrapper(
     private val preferences: SmbPreferences,
 ) {
+
+    private val mutex = Mutex()
+    private var client: SMBClient? = null
+    private var connection: Connection? = null
+    private var session: Session? = null
+    private var share: DiskShare? = null
 
     private val imageExtensions = setOf("jpg", "jpeg", "png", "gif", "webp", "bmp", "avif")
 
@@ -31,65 +41,93 @@ class SmbClientWrapper(
     }
 
     /**
-     * Crea una conexion fresca, ejecuta el bloque y la cierra siempre.
-     * Cada operacion es independiente: no hay estado compartido que pueda quedarse muerto.
+     * Devuelve la conexion activa. Antes de reutilizarla, la prueba con un list("")
+     * para verificar que el servidor no la haya cerrado por inactividad.
+     * Si la prueba falla, reconecta limpiamente.
      */
-    private suspend fun <T> withFreshConnection(block: (DiskShare) -> T): T = withContext(Dispatchers.IO) {
+    private suspend fun ensureConnected(): DiskShare = mutex.withLock {
+        val currentShare = share
+        if (currentShare != null && currentShare.isConnected) {
+            // Probar activamente si la conexion sigue viva
+            val alive = try {
+                currentShare.list("")
+                true
+            } catch (_: Exception) {
+                false
+            }
+            if (alive) return@withLock currentShare
+        }
+
+        // Reconectar
+        disconnectInternal()
+
         val host = preferences.smbHost.get()
         val user = preferences.smbUser.get()
         val password = preferences.smbPassword.get()
         val shareName = preferences.smbShareName.get()
 
-        val client = SMBClient(buildConfig())
-        val connection = client.connect(host)
-        try {
-            val authContext = if (user.isNotBlank()) {
-                AuthenticationContext(user, password.toCharArray(), "")
-            } else {
-                AuthenticationContext.guest()
-            }
-            val session = connection.authenticate(authContext)
-            val diskShare = session.connectShare(shareName) as DiskShare
-            try {
-                block(diskShare)
-            } finally {
-                try { diskShare.close() } catch (_: Exception) {}
-                try { session.close() } catch (_: Exception) {}
-            }
-        } finally {
-            try { connection.close() } catch (_: Exception) {}
-            try { client.close() } catch (_: Exception) {}
+        val newClient = SMBClient(buildConfig())
+        val newConnection = newClient.connect(host)
+        val authContext = if (user.isNotBlank()) {
+            AuthenticationContext(user, password.toCharArray(), "")
+        } else {
+            AuthenticationContext.guest()
         }
+        val newSession = newConnection.authenticate(authContext)
+        val newShare = newSession.connectShare(shareName) as DiskShare
+
+        client = newClient
+        connection = newConnection
+        session = newSession
+        share = newShare
+
+        newShare
     }
 
     suspend fun testConnection(): Result<String> = withContext(Dispatchers.IO) {
         try {
-            val folderCount = withFreshConnection { diskShare ->
-                diskShare.list("").count {
-                    (it.fileAttributes and FileAttributes.FILE_ATTRIBUTE_DIRECTORY.value) != 0L &&
-                        it.fileName != "." && it.fileName != ".."
-                }
+            val diskShare = ensureConnected()
+            val entries = diskShare.list("")
+            val folderCount = entries.count {
+                (it.fileAttributes and FileAttributes.FILE_ATTRIBUTE_DIRECTORY.value) != 0L &&
+                    it.fileName != "." && it.fileName != ".."
             }
             Result.success("Conexion exitosa. $folderCount carpetas encontradas.")
         } catch (e: Exception) {
+            disconnectInternal()
             Result.failure(e)
         }
     }
 
     suspend fun listFolders(path: String): List<String> = withContext(Dispatchers.IO) {
+        var diskShare: DiskShare? = null
         try {
-            withFreshConnection { diskShare ->
-                diskShare.list(path)
+            diskShare = ensureConnected()
+            try {
+                val entries = diskShare.list(path)
+                return@withContext entries
                     .filter {
                         val isDir = (it.fileAttributes and FileAttributes.FILE_ATTRIBUTE_DIRECTORY.value) != 0L
-                        val isZip = (it.fileAttributes and FileAttributes.FILE_ATTRIBUTE_DIRECTORY.value) == 0L &&
-                            (it.fileName.endsWith(".cbz", true) || it.fileName.endsWith(".zip", true))
+                        val isZip = (it.fileAttributes and FileAttributes.FILE_ATTRIBUTE_DIRECTORY.value) == 0L && (it.fileName.endsWith(".cbz", true) || it.fileName.endsWith(".zip", true))
+                        (isDir || isZip) && it.fileName != "." && it.fileName != ".."
+                    }
+                    .map { it.fileName }
+                    .sorted()
+            } catch (e: Exception) {
+                resetConnection(diskShare)
+                diskShare = ensureConnected()
+                val entries = diskShare.list(path)
+                return@withContext entries
+                    .filter {
+                        val isDir = (it.fileAttributes and FileAttributes.FILE_ATTRIBUTE_DIRECTORY.value) != 0L
+                        val isZip = (it.fileAttributes and FileAttributes.FILE_ATTRIBUTE_DIRECTORY.value) == 0L && (it.fileName.endsWith(".cbz", true) || it.fileName.endsWith(".zip", true))
                         (isDir || isZip) && it.fileName != "." && it.fileName != ".."
                     }
                     .map { it.fileName }
                     .sorted()
             }
         } catch (e: Exception) {
+            resetConnection(diskShare)
             emptyList()
         }
     }
@@ -99,13 +137,34 @@ class SmbClientWrapper(
      * lastModifiedMs is milliseconds since Unix epoch from the SMB server's last write time.
      */
     suspend fun listFoldersWithDate(path: String): List<Pair<String, Long>> = withContext(Dispatchers.IO) {
+        var diskShare: DiskShare? = null
         try {
-            withFreshConnection { diskShare ->
-                diskShare.list(path)
+            diskShare = ensureConnected()
+            try {
+                val entries = diskShare.list(path)
+                return@withContext entries
                     .filter {
                         val isDir = (it.fileAttributes and FileAttributes.FILE_ATTRIBUTE_DIRECTORY.value) != 0L
-                        val isZip = (it.fileAttributes and FileAttributes.FILE_ATTRIBUTE_DIRECTORY.value) == 0L &&
-                            (it.fileName.endsWith(".cbz", true) || it.fileName.endsWith(".zip", true))
+                        val isZip = (it.fileAttributes and FileAttributes.FILE_ATTRIBUTE_DIRECTORY.value) == 0L && (it.fileName.endsWith(".cbz", true) || it.fileName.endsWith(".zip", true))
+                        (isDir || isZip) && it.fileName != "." && it.fileName != ".."
+                    }
+                    .map { entry ->
+                        val lastWriteMs = try {
+                            entry.lastWriteTime.toDate().time
+                        } catch (_: Exception) {
+                            0L
+                        }
+                        entry.fileName to lastWriteMs
+                    }
+                    .sortedBy { it.first }
+            } catch (e: Exception) {
+                resetConnection(diskShare)
+                diskShare = ensureConnected()
+                val entries = diskShare.list(path)
+                return@withContext entries
+                    .filter {
+                        val isDir = (it.fileAttributes and FileAttributes.FILE_ATTRIBUTE_DIRECTORY.value) != 0L
+                        val isZip = (it.fileAttributes and FileAttributes.FILE_ATTRIBUTE_DIRECTORY.value) == 0L && (it.fileName.endsWith(".cbz", true) || it.fileName.endsWith(".zip", true))
                         (isDir || isZip) && it.fileName != "." && it.fileName != ".."
                     }
                     .map { entry ->
@@ -119,14 +178,29 @@ class SmbClientWrapper(
                     .sortedBy { it.first }
             }
         } catch (e: Exception) {
+            resetConnection(diskShare)
             emptyList()
         }
     }
 
     suspend fun listImageFiles(path: String): List<String> = withContext(Dispatchers.IO) {
+        var diskShare: DiskShare? = null
         try {
-            withFreshConnection { diskShare ->
-                diskShare.list(path)
+            diskShare = ensureConnected()
+            try {
+                val entries = diskShare.list(path)
+                return@withContext entries
+                    .filter {
+                        (it.fileAttributes and FileAttributes.FILE_ATTRIBUTE_DIRECTORY.value) == 0L &&
+                            it.fileName.substringAfterLast('.', "").lowercase() in imageExtensions
+                    }
+                    .map { it.fileName }
+                    .sortedWith(NaturalOrderComparator)
+            } catch (e: Exception) {
+                resetConnection(diskShare)
+                diskShare = ensureConnected()
+                val entries = diskShare.list(path)
+                return@withContext entries
                     .filter {
                         (it.fileAttributes and FileAttributes.FILE_ATTRIBUTE_DIRECTORY.value) == 0L &&
                             it.fileName.substringAfterLast('.', "").lowercase() in imageExtensions
@@ -135,51 +209,40 @@ class SmbClientWrapper(
                     .sortedWith(NaturalOrderComparator)
             }
         } catch (e: Exception) {
+            resetConnection(diskShare)
             emptyList()
         }
     }
 
     suspend fun getFileInputStream(path: String): InputStream? = withContext(Dispatchers.IO) {
+        var diskShare: DiskShare? = null
         try {
-            val host = preferences.smbHost.get()
-            val user = preferences.smbUser.get()
-            val password = preferences.smbPassword.get()
-            val shareName = preferences.smbShareName.get()
-
-            val client = SMBClient(buildConfig())
-            val connection = client.connect(host)
-            val authContext = if (user.isNotBlank()) {
-                AuthenticationContext(user, password.toCharArray(), "")
-            } else {
-                AuthenticationContext.guest()
-            }
-            val session = connection.authenticate(authContext)
-            val diskShare = session.connectShare(shareName) as DiskShare
-
-            val file = diskShare.openFile(
-                path,
-                EnumSet.of(AccessMask.GENERIC_READ),
-                null,
-                SMB2ShareAccess.ALL,
-                SMB2CreateDisposition.FILE_OPEN,
-                EnumSet.noneOf(SMB2CreateOptions::class.java),
-            )
-
-            // Envolvemos el InputStream para cerrar la conexion al finalizar
-            object : InputStream() {
-                private val inner = file.inputStream
-                override fun read(): Int = inner.read()
-                override fun read(b: ByteArray, off: Int, len: Int): Int = inner.read(b, off, len)
-                override fun close() {
-                    try { inner.close() } catch (_: Exception) {}
-                    try { file.close() } catch (_: Exception) {}
-                    try { diskShare.close() } catch (_: Exception) {}
-                    try { session.close() } catch (_: Exception) {}
-                    try { connection.close() } catch (_: Exception) {}
-                    try { client.close() } catch (_: Exception) {}
-                }
+            diskShare = ensureConnected()
+            try {
+                val file = diskShare.openFile(
+                    path,
+                    EnumSet.of(AccessMask.GENERIC_READ),
+                    null,
+                    SMB2ShareAccess.ALL,
+                    SMB2CreateDisposition.FILE_OPEN,
+                    EnumSet.noneOf(SMB2CreateOptions::class.java),
+                )
+                return@withContext file.inputStream
+            } catch (e: Exception) {
+                resetConnection(diskShare)
+                diskShare = ensureConnected()
+                val file = diskShare.openFile(
+                    path,
+                    EnumSet.of(AccessMask.GENERIC_READ),
+                    null,
+                    SMB2ShareAccess.ALL,
+                    SMB2CreateDisposition.FILE_OPEN,
+                    EnumSet.noneOf(SMB2CreateOptions::class.java),
+                )
+                return@withContext file.inputStream
             }
         } catch (e: Exception) {
+            resetConnection(diskShare)
             null
         }
     }
@@ -193,8 +256,26 @@ class SmbClientWrapper(
         }
     }
 
-    // Mantenido por compatibilidad con el codigo existente
-    suspend fun disconnect() { /* sin estado persistente, no hay nada que cerrar */ }
+    suspend fun disconnect() = mutex.withLock {
+        disconnectInternal()
+    }
+
+    private suspend fun resetConnection(failedShare: DiskShare?) = mutex.withLock {
+        if (share === failedShare && failedShare != null) {
+            disconnectInternal()
+        }
+    }
+
+    private fun disconnectInternal() {
+        try { share?.close() } catch (_: Exception) {}
+        try { session?.close() } catch (_: Exception) {}
+        try { connection?.close() } catch (_: Exception) {}
+        try { client?.close() } catch (_: Exception) {}
+        share = null
+        session = null
+        connection = null
+        client = null
+    }
 
     private object NaturalOrderComparator : Comparator<String> {
         override fun compare(a: String, b: String): Int {
